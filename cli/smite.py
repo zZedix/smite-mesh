@@ -6,25 +6,23 @@ import os
 import sys
 import subprocess
 import argparse
-import json
 import getpass
-import hashlib
 from pathlib import Path
 
-# Add panel to path for imports
-sys.path.insert(0, str(Path(__file__).parent.parent / "panel"))
-
+# Try to import requests, if not available, install it or use urllib
 try:
-    from app.database import AsyncSessionLocal, init_db
-    from app.models import Admin
-    from sqlalchemy import select
-    from passlib.context import CryptContext
-    import asyncio
+    import requests
 except ImportError:
-    print("Error: Panel dependencies not installed. Install with: pip install -r panel/requirements.txt")
-    sys.exit(1)
-
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+    try:
+        import urllib.request
+        import urllib.parse
+        import json as json_lib
+        HAS_REQUESTS = False
+    except ImportError:
+        print("Error: Please install requests: pip install requests")
+        sys.exit(1)
+else:
+    HAS_REQUESTS = True
 
 
 def get_compose_file():
@@ -41,6 +39,22 @@ def get_env_file():
     """Get .env file path"""
     project_root = Path(__file__).parent.parent
     return project_root / ".env"
+
+
+def get_panel_port():
+    """Get panel port from .env file"""
+    env_file = get_env_file()
+    if env_file.exists():
+        for line in env_file.read_text().splitlines():
+            if line.startswith("PANEL_PORT="):
+                return int(line.split("=")[1].strip())
+    return 8000
+
+
+def get_panel_url():
+    """Get panel API URL"""
+    port = get_panel_port()
+    return f"http://localhost:{port}"
 
 
 def run_docker_compose(args, capture_output=False):
@@ -60,24 +74,95 @@ def cmd_admin_create(args):
     username = args.username or input("Username: ")
     password = args.password or getpass.getpass("Password: ")
     
-    async def create():
-        await init_db()
-        async with AsyncSessionLocal() as session:
-            # Check if admin exists
-            result = await session.execute(select(Admin).where(Admin.username == username))
-            existing = result.scalar_one_or_none()
-            if existing:
-                print(f"Error: Admin user '{username}' already exists")
-                return
-            
-            # Create admin
-            password_hash = pwd_context.hash(password)
-            admin = Admin(username=username, password_hash=password_hash)
-            session.add(admin)
-            await session.commit()
-            print(f"Admin user '{username}' created successfully!")
+    # Try to create via API first (if admin API endpoint exists)
+    # Otherwise, try direct database access
+    panel_url = get_panel_url()
     
-    asyncio.run(create())
+    # For now, use direct database access (requires dependencies)
+    # In future, we can add an admin API endpoint
+    try:
+        # Add panel to path for imports
+        project_root = Path(__file__).parent.parent
+        panel_path = project_root / "panel"
+        if not panel_path.exists():
+            print("Error: Panel directory not found")
+            sys.exit(1)
+        
+        sys.path.insert(0, str(panel_path))
+        
+        from app.database import AsyncSessionLocal, init_db
+        from app.models import Admin
+        from sqlalchemy import select
+        from passlib.context import CryptContext
+        import asyncio
+        
+        pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+        
+        async def create():
+            await init_db()
+            async with AsyncSessionLocal() as session:
+                # Check if admin exists
+                result = await session.execute(select(Admin).where(Admin.username == username))
+                existing = result.scalar_one_or_none()
+                if existing:
+                    print(f"Error: Admin user '{username}' already exists")
+                    return
+                
+                # Create admin
+                password_hash = pwd_context.hash(password)
+                admin = Admin(username=username, password_hash=password_hash)
+                session.add(admin)
+                await session.commit()
+                print(f"Admin user '{username}' created successfully!")
+        
+        asyncio.run(create())
+        
+    except ImportError as e:
+        print("Error: Panel dependencies not installed.")
+        print("Installing required dependencies...")
+        
+        # Try to install dependencies
+        panel_requirements = project_root / "panel" / "requirements.txt"
+        if panel_requirements.exists():
+            subprocess.run([
+                sys.executable, "-m", "pip", "install", 
+                "passlib[bcrypt]", "sqlalchemy", "aiosqlite", 
+                "cryptography", "python-jose[cryptography]"
+            ], check=False)
+            # Try again
+            try:
+                from app.database import AsyncSessionLocal, init_db
+                from app.models import Admin
+                from sqlalchemy import select
+                from passlib.context import CryptContext
+                import asyncio
+                
+                pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+                
+                async def create():
+                    await init_db()
+                    async with AsyncSessionLocal() as session:
+                        result = await session.execute(select(Admin).where(Admin.username == username))
+                        existing = result.scalar_one_or_none()
+                        if existing:
+                            print(f"Error: Admin user '{username}' already exists")
+                            return
+                        
+                        password_hash = pwd_context.hash(password)
+                        admin = Admin(username=username, password_hash=password_hash)
+                        session.add(admin)
+                        await session.commit()
+                        print(f"Admin user '{username}' created successfully!")
+                
+                asyncio.run(create())
+            except Exception as e2:
+                print(f"Error: Failed to create admin: {e2}")
+                print("\nAlternative: Create admin via Docker:")
+                print(f"  docker compose exec smite-panel python -c \"from app.database import AsyncSessionLocal, init_db; from app.models import Admin; from sqlalchemy import select; from passlib.context import CryptContext; import asyncio; pwd = CryptContext(schemes=['bcrypt']); ...\"")
+                sys.exit(1)
+        else:
+            print(f"Error: Could not find panel requirements at {panel_requirements}")
+            sys.exit(1)
 
 
 def cmd_status(args):
@@ -95,28 +180,25 @@ def cmd_status(args):
     
     # Check API
     try:
-        try:
-            import requests
-        except ImportError:
-            print("API: requests library not installed")
-            return
+        panel_url = get_panel_url()
         
-        # Get port from env
-        env_file = get_env_file()
-        port = 8000
-        if env_file.exists():
-            for line in env_file.read_text().splitlines():
-                if line.startswith("PANEL_PORT="):
-                    port = int(line.split("=")[1])
-        
-        response = requests.get(f"http://localhost:{port}/api/status", timeout=2)
-        if response.status_code == 200:
-            data = response.json()
-            print(f"API: Running")
-            print(f"Nodes: {data['nodes']['active']}/{data['nodes']['total']} active")
-            print(f"Tunnels: {data['tunnels']['active']}/{data['tunnels']['total']} active")
+        if HAS_REQUESTS:
+            response = requests.get(f"{panel_url}/api/status", timeout=2)
+            if response.status_code == 200:
+                data = response.json()
+                print(f"API: Running")
+                print(f"Nodes: {data['nodes']['active']}/{data['nodes']['total']} active")
+                print(f"Tunnels: {data['tunnels']['active']}/{data['tunnels']['total']} active")
+            else:
+                print("API: Not responding")
         else:
-            print("API: Not responding")
+            # Fallback to urllib
+            req = urllib.request.Request(f"{panel_url}/api/status")
+            with urllib.request.urlopen(req, timeout=2) as response:
+                data = json_lib.loads(response.read().decode())
+                print(f"API: Running")
+                print(f"Nodes: {data['nodes']['active']}/{data['nodes']['total']} active")
+                print(f"Tunnels: {data['tunnels']['active']}/{data['tunnels']['total']} active")
     except Exception as e:
         print(f"API: Not accessible ({e})")
 

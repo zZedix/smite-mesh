@@ -127,6 +127,12 @@ else
     echo "Installed smite CLI to /usr/local/bin/smite"
 fi
 
+# Install minimal Python dependencies for CLI (if not in container)
+if ! python3 -c "import requests" 2>/dev/null; then
+    echo "Installing Python dependencies for CLI..."
+    pip3 install requests --quiet 2>/dev/null || python3 -m pip install requests --quiet 2>/dev/null || echo "Note: Install requests manually: pip install requests"
+fi
+
 # Start services
 echo ""
 echo "Starting Smite Panel..."
