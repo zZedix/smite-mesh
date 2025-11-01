@@ -78,34 +78,55 @@ def cmd_admin_create(args):
     
     # First try: Use Docker exec (works on fresh installs)
     try:
+        # Check if container exists at all
+        check_result = subprocess.run(
+            ["docker", "ps", "-a", "--filter", "name=smite-panel", "--format", "{{.Names}}"],
+            capture_output=True,
+            text=True,
+            timeout=5
+        )
+        
+        if check_result.returncode != 0 or not check_result.stdout.strip():
+            print("Container 'smite-panel' not found. Please start the panel first:")
+            print("  docker compose up -d")
+            sys.exit(1)
+        
+        container_name = check_result.stdout.strip()
+        
         # Wait for container to be running (not restarting)
         max_wait = 30
         waited = 0
-        container_name = None
+        import time
+        
+        print(f"Waiting for container {container_name} to be ready...", end="", flush=True)
         
         while waited < max_wait:
             result = subprocess.run(
-                ["docker", "ps", "--filter", "name=smite-panel", "--format", "{{.Names}}"],
+                ["docker", "ps", "--filter", f"name={container_name}", "--format", "{{.Status}}"],
                 capture_output=True,
                 text=True,
                 timeout=5
             )
             if result.returncode == 0 and result.stdout.strip():
-                container_name = result.stdout.strip()
-                # Check if container is actually running (not restarting)
-                status_result = subprocess.run(
-                    ["docker", "ps", "--filter", f"name={container_name}", "--format", "{{.Status}}"],
-                    capture_output=True,
-                    text=True,
-                    timeout=5
-                )
-                if "Up" in status_result.stdout and "Restarting" not in status_result.stdout:
+                status = result.stdout.strip()
+                if "Up" in status and "Restarting" not in status:
+                    print(" ✓")
                     break
-            import time
+                elif "Restarting" in status:
+                    print(".", end="", flush=True)
+                else:
+                    print(f"\nContainer status: {status}")
+                    print("Please wait for the container to start, then try again.")
+                    sys.exit(1)
+            print(".", end="", flush=True)
             time.sleep(2)
             waited += 2
+        else:
+            print("\nTimeout waiting for container to be ready.")
+            print("Please check container status: docker ps -a | grep smite-panel")
+            sys.exit(1)
         
-        if container_name and waited < max_wait:
+        if container_name:
             print(f"Creating admin via Docker container ({container_name})...")
             
             # Create Python script to run inside container
