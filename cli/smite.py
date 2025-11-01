@@ -122,6 +122,12 @@ from passlib.context import CryptContext
 username = {username_repr}
 password = {password_repr}
 
+# Truncate password to 72 bytes if needed (bcrypt limit)
+if isinstance(password, str):
+    password_bytes = password.encode('utf-8')
+    if len(password_bytes) > 72:
+        password = password_bytes[:72].decode('utf-8', errors='ignore')
+
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 async def create():
@@ -133,7 +139,11 @@ async def create():
             print(f"Error: Admin user '{{username}}' already exists", file=sys.stderr)
             sys.exit(1)
         
-        password_hash = pwd_context.hash(password)
+        try:
+            password_hash = pwd_context.hash(password)
+        except Exception as e:
+            print(f"Error hashing password: {{e}}", file=sys.stderr)
+            sys.exit(1)
         admin = Admin(username=username, password_hash=password_hash)
         session.add(admin)
         await session.commit()
