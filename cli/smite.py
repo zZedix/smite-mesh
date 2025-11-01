@@ -156,14 +156,12 @@ asyncio.run(create())
 """
             
             # Write script to temp file and execute (more reliable than -c with multiline)
-            import tempfile
             with tempfile.NamedTemporaryFile(mode='w', suffix='.py', delete=False) as tmp_file:
                 tmp_file.write(script_content)
                 tmp_file_path = tmp_file.name
             
             try:
                 # Copy script to container
-                import shutil
                 copy_proc = subprocess.run(
                     ["docker", "cp", tmp_file_path, f"{container_name}:/tmp/create_admin.py"],
                     capture_output=True,
