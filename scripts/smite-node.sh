@@ -24,9 +24,18 @@ fi
 INSTALL_DIR="/opt/smite-node"
 echo "Installing to: $INSTALL_DIR"
 
-# Create directory
-mkdir -p "$INSTALL_DIR"
-cd "$INSTALL_DIR"
+# Clone from GitHub if needed
+if [ -d "$INSTALL_DIR" ] && [ -f "$INSTALL_DIR/docker-compose.yml" ]; then
+    echo "Smite Node already installed in $INSTALL_DIR"
+    cd "$INSTALL_DIR"
+else
+    echo "Setting up Smite Node..."
+    mkdir -p "$INSTALL_DIR"
+    cd "$INSTALL_DIR"
+    
+    # Clone just the node files or create minimal structure
+    # For now, we'll create the necessary files
+fi
 
 # Prompt for configuration
 echo ""
@@ -63,41 +72,31 @@ PANEL_CA_PATH=/etc/smite-node/certs/ca.crt
 PANEL_ADDRESS=$PANEL_ADDRESS
 EOF
 
-# Copy necessary files (in production, this would be from repo)
-# For now, create a minimal docker-compose.yml
-cat > docker-compose.yml << 'EOF'
-version: '3.8'
-
-services:
-  smite-node:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    container_name: smite-node
-    network_mode: host
-    cap_add:
-      - NET_ADMIN
-    devices:
-      - /dev/net/tun
-    sysctls:
-      - net.ipv4.ip_forward=1
-    volumes:
-      - ./certs:/etc/smite-node/certs:ro
-      - ./config:/etc/smite-node
-      - /etc/wireguard:/etc/wireguard
-    env_file:
-      - .env
-    restart: always
-EOF
-
-# Create Dockerfile if not exists
+# Clone node files from GitHub
 if [ ! -f "Dockerfile" ]; then
-    echo "Warning: Dockerfile not found. Please ensure node/Dockerfile exists."
+    echo "Cloning node files from GitHub..."
+    TEMP_DIR=$(mktemp -d)
+    git clone https://github.com/zZedix/Smite.git "$TEMP_DIR" || {
+        echo "Error: Failed to clone repository"
+        exit 1
+    }
+    
+    # Copy node files
+    cp -r "$TEMP_DIR/node"/* .
+    rm -rf "$TEMP_DIR"
 fi
 
 # Install CLI
-if [ -f "cli/smite-node.py" ]; then
-    sudo cp cli/smite-node.py /usr/local/bin/smite-node
+if [ -f "/opt/smite/cli/smite-node.py" ]; then
+    sudo cp /opt/smite/cli/smite-node.py /usr/local/bin/smite-node
+    sudo chmod +x /usr/local/bin/smite-node
+elif [ -f "$INSTALL_DIR/../Smite/cli/smite-node.py" ]; then
+    sudo cp "$INSTALL_DIR/../Smite/cli/smite-node.py" /usr/local/bin/smite-node
+    sudo chmod +x /usr/local/bin/smite-node
+else
+    # Download CLI directly
+    echo "Downloading CLI tool..."
+    sudo curl -L https://raw.githubusercontent.com/zZedix/Smite/main/cli/smite-node.py -o /usr/local/bin/smite-node
     sudo chmod +x /usr/local/bin/smite-node
 fi
 

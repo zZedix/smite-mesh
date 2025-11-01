@@ -36,16 +36,20 @@ fi
 INSTALL_DIR="/opt/smite"
 echo "Installing to: $INSTALL_DIR"
 
-# Create directory
-mkdir -p "$INSTALL_DIR"
-cd "$INSTALL_DIR"
-
-# Clone or copy files (for installer, assume files are in current directory)
-# In production, this would clone from GitHub
-if [ ! -f "docker-compose.yml" ] && [ ! -f "docker/docker-compose.panel.yml" ]; then
-    echo "Please ensure Smite files are available in $INSTALL_DIR"
-    echo "Or modify this script to clone from GitHub"
-    exit 1
+# Check if directory exists and has files
+if [ -d "$INSTALL_DIR" ] && [ -f "$INSTALL_DIR/docker-compose.yml" ]; then
+    echo "Smite already installed in $INSTALL_DIR"
+    cd "$INSTALL_DIR"
+else
+    # Clone from GitHub
+    echo "Cloning Smite from GitHub..."
+    rm -rf "$INSTALL_DIR"
+    git clone https://github.com/zZedix/Smite.git "$INSTALL_DIR" || {
+        echo "Error: Failed to clone repository"
+        echo "Make sure git is installed: apt-get install -y git"
+        exit 1
+    }
+    cd "$INSTALL_DIR"
 fi
 
 # Prompt for configuration
