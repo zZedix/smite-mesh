@@ -118,15 +118,19 @@ def cmd_admin_create(args):
             if not compose_file.exists():
                 print(f"Error: docker-compose.yml not found at {compose_file}")
                 sys.exit(1)
+            print(f"Using compose file: {compose_file}")
+            # Run docker compose with visible output
             start_result = subprocess.run(
                 ["docker", "compose", "-f", str(compose_file), "up", "-d"],
-                capture_output=True,
-                text=True
+                capture_output=False,  # Show output in real-time
+                text=True,
+                timeout=120  # 2 minute timeout
             )
             if start_result.returncode != 0:
-                print(f"Failed to start panel: {start_result.stderr}")
+                print(f"\nFailed to start panel (exit code: {start_result.returncode})")
+                print("Please check: docker compose -f docker-compose.yml up -d")
                 sys.exit(1)
-            print("Panel started. Waiting for it to be ready...")
+            print("\nPanel started. Waiting for it to be ready...")
             import time
             time.sleep(5)  # Give it a moment to start
             # Re-check
