@@ -59,6 +59,11 @@ async def _restore_port_forwards():
             tunnels = result.scalars().all()
             
             for tunnel in tunnels:
+                # Only restore TCP-based tunnels
+                needs_tcp_forwarding = tunnel.type in ["tcp", "ws", "grpc"] and tunnel.core == "xray"
+                if not needs_tcp_forwarding:
+                    continue
+                
                 remote_port = tunnel.spec.get("remote_port") or tunnel.spec.get("listen_port")
                 if not remote_port:
                     continue
