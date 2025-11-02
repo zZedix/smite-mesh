@@ -40,15 +40,35 @@ class TCPAdapter:
         self.processes = {}  # Track running processes
     
     def apply(self, tunnel_id: str, spec: Dict[str, Any]):
-        """Apply TCP tunnel"""
+        """Apply TCP tunnel - forwards TCP connections using dokodemo-door"""
+        # Use remote_port for the listening port, or listen_port as fallback
+        listen_port = spec.get("remote_port") or spec.get("listen_port", 10000)
+        # Forward to local service (default to 127.0.0.1:same_port, or use forward_to if specified)
+        # For 3x-ui, it typically listens on 127.0.0.1:2053 or similar
+        forward_addr = spec.get("forward_to", "127.0.0.1:2053")
+        
+        # Parse forward address
+        if ":" in str(forward_addr):
+            forward_host, forward_port = str(forward_addr).rsplit(":", 1)
+        else:
+            forward_host = "127.0.0.1"
+            forward_port = str(forward_addr)
+        
+        try:
+            forward_port_int = int(forward_port)
+        except (ValueError, TypeError):
+            forward_port_int = 2053  # Default to 3x-ui default port
+        
+        # Use dokodemo-door to forward TCP traffic
         config = {
             "log": {"loglevel": "warning"},
             "inbounds": [{
-                "port": spec.get("listen_port", 10000),
-                "protocol": "socks",
+                "port": int(listen_port),
+                "protocol": "dokodemo-door",
                 "settings": {
-                    "auth": "noauth",
-                    "udp": True
+                    "address": forward_host,
+                    "port": forward_port_int,
+                    "network": "tcp"
                 }
             }],
             "outbounds": [{
@@ -60,6 +80,10 @@ class TCPAdapter:
         config_path = self.config_dir / f"{tunnel_id}.json"
         with open(config_path, "w") as f:
             json.dump(config, f)
+        
+        # Remove old process if exists
+        if tunnel_id in self.processes:
+            self.remove(tunnel_id)
         
         # Start xray-core
         try:

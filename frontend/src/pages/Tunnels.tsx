@@ -191,6 +191,7 @@ const AddTunnelModal = ({ nodes, onClose, onSuccess }: AddTunnelModalProps) => {
     expires_days: '',
     expires_date: '',
     remote_port: 10000,
+    forward_to: '127.0.0.1:2053',
     spec: {} as Record<string, any>,
   })
 
@@ -212,6 +213,10 @@ const AddTunnelModal = ({ nodes, onClose, onSuccess }: AddTunnelModalProps) => {
 
       const spec = getSpecForType(formData.core, formData.type)
       spec.remote_port = parseInt(formData.remote_port.toString()) || 10000
+      // For TCP tunnels, add forward_to if specified
+      if (formData.core === 'xray' && formData.type === 'tcp' && formData.forward_to) {
+        spec.forward_to = formData.forward_to
+      }
       
       const payload = {
         name: formData.name,
@@ -373,7 +378,44 @@ const AddTunnelModal = ({ nodes, onClose, onSuccess }: AddTunnelModalProps) => {
                 max="65535"
                 required
               />
+              <p className="text-xs text-gray-500 mt-1">Port on node to listen for connections</p>
             </div>
+            {formData.core === 'xray' && formData.type === 'tcp' && (
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Forward To (IP:Port)
+                </label>
+                <input
+                  type="text"
+                  value={formData.forward_to}
+                  onChange={(e) =>
+                    setFormData({ ...formData, forward_to: e.target.value })
+                  }
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                  placeholder="127.0.0.1:2053"
+                />
+                <p className="text-xs text-gray-500 mt-1">Where to forward traffic (e.g., 3x-ui port)</p>
+              </div>
+            )}
+            {(!(formData.core === 'xray' && formData.type === 'tcp')) && (
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Quota (MB, 0 = unlimited)
+                </label>
+                <input
+                  type="number"
+                  value={formData.quota_mb}
+                  onChange={(e) =>
+                    setFormData({ ...formData, quota_mb: parseFloat(e.target.value) || 0 })
+                  }
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                  min="0"
+                />
+              </div>
+            )}
+          </div>
+          
+          {formData.core === 'xray' && formData.type === 'tcp' && (
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
                 Quota (MB, 0 = unlimited)
@@ -388,7 +430,7 @@ const AddTunnelModal = ({ nodes, onClose, onSuccess }: AddTunnelModalProps) => {
                 min="0"
               />
             </div>
-          </div>
+          )}
 
           <div className="grid grid-cols-2 gap-4">
             <div>
