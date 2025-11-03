@@ -520,7 +520,7 @@ class RatholeAdapter:
         
         config = f"""[client]
 remote_addr = "{remote_addr}"
-token = "{token}"
+default_token = "{token}"
 
 [client.services.{tunnel_id}]
 local_addr = "{local_addr}"
