@@ -148,10 +148,13 @@ async def create_tunnel(tunnel: TunnelCreate, request: Request, db: AsyncSession
                 if needs_gost_forwarding:
                     debug_print(f"DEBUG: INSIDE if needs_gost_forwarding block!")
                     debug_print(f"DEBUG: Entering gost forwarding block for tunnel {db_tunnel.id}")
-                    remote_port = db_tunnel.spec.get("remote_port") or db_tunnel.spec.get("listen_port")
-                    debug_print(f"DEBUG: Tunnel {db_tunnel.id}: remote_port={remote_port}, spec={db_tunnel.spec}")
+                    # panel_port: port on panel where gost listens (remote_port from spec)
+                    # node_port: port on node where xray listens (listen_port from spec)
+                    panel_port = db_tunnel.spec.get("remote_port") or db_tunnel.spec.get("listen_port")
+                    node_port = db_tunnel.spec.get("listen_port") or db_tunnel.spec.get("remote_port")
+                    debug_print(f"DEBUG: Tunnel {db_tunnel.id}: panel_port={panel_port}, node_port={node_port}, spec={db_tunnel.spec}")
                     debug_print(f"DEBUG: Tunnel {db_tunnel.id}: has gost_forwarder={hasattr(request.app.state, 'gost_forwarder')}")
-                    if remote_port and hasattr(request.app.state, 'gost_forwarder'):
+                    if panel_port and node_port and hasattr(request.app.state, 'gost_forwarder'):
                         debug_print(f"DEBUG: Conditions met - will start gost forwarding")
                         debug_print(f"DEBUG: IMMEDIATELY AFTER Conditions met - checking node metadata")
                         # Get node IP address from metadata
@@ -177,14 +180,14 @@ async def create_tunnel(tunnel: TunnelCreate, request: Request, db: AsyncSession
                         if node_address:
                             debug_print(f"DEBUG: node_address is truthy, about to call start_forward()")
                             try:
-                                # Use gost for forwarding
-                                debug_print(f"DEBUG: About to call start_forward() with: tunnel_id={db_tunnel.id}, local_port={remote_port}, node_address={node_address}, remote_port={remote_port}, tunnel_type={db_tunnel.type}")
-                                logger.info(f"Starting gost forwarding for tunnel {db_tunnel.id}: {db_tunnel.type}://:{remote_port} -> {node_address}:{remote_port}")
+                                # Use gost for forwarding: listen on panel_port, forward to node:node_port
+                                debug_print(f"DEBUG: About to call start_forward() with: tunnel_id={db_tunnel.id}, local_port={panel_port}, node_address={node_address}, remote_port={node_port}, tunnel_type={db_tunnel.type}")
+                                logger.info(f"Starting gost forwarding for tunnel {db_tunnel.id}: {db_tunnel.type}://:{panel_port} -> {node_address}:{node_port}")
                                 request.app.state.gost_forwarder.start_forward(
                                     tunnel_id=db_tunnel.id,
-                                    local_port=int(remote_port),
+                                    local_port=int(panel_port),
                                     node_address=node_address,
-                                    remote_port=int(remote_port),
+                                    remote_port=int(node_port),
                                     tunnel_type=db_tunnel.type
                                 )
                                 debug_print(f"DEBUG: start_forward() returned successfully")
