@@ -154,48 +154,28 @@ class TCPAdapter:
         }
     
     def get_usage_mb(self, tunnel_id: str) -> float:
-        """Get usage in MB - tracks network I/O via process connections"""
+        """Get usage in MB - tracks cumulative network I/O"""
         if tunnel_id in self.processes:
             proc = self.processes[tunnel_id]
             try:
                 proc_info = psutil.Process(proc.pid)
-                # Get network connections to estimate traffic
-                # Count bytes sent/received through connections
-                connections = proc_info.connections()
-                current_bytes = 0
-                
-                # Try to get network I/O from connections
-                # Note: This is an approximation - xray stats API would be better
-                for conn in connections:
-                    if conn.status == 'ESTABLISHED':
-                        # Estimate based on connection count (rough approximation)
-                        # Each connection typically has some traffic
-                        current_bytes += 1024  # Small base amount per connection
-                
-                # Also check process I/O but weight network connections more
-                try:
-                    io_counters = proc_info.io_counters()
-                    # Network I/O is typically much higher than disk for xray
-                    # If we have connections, assume most I/O is network
-                    if connections:
-                        # Estimate: 70% of I/O is network-related
-                        io_bytes = int((io_counters.read_bytes + io_counters.write_bytes) * 0.7)
-                        current_bytes = max(current_bytes, io_bytes)
-                except:
-                    pass
+                # Get process I/O counters
+                io_counters = proc_info.io_counters()
+                # For xray processes, read_bytes + write_bytes includes network traffic
+                # Since xray is primarily a network proxy, most I/O is network-related
+                total_bytes = io_counters.read_bytes + io_counters.write_bytes
                 
                 # Track cumulative usage
                 if tunnel_id not in self.usage_tracking:
                     self.usage_tracking[tunnel_id] = 0.0
                 
-                # Update cumulative tracking
-                # Convert bytes to MB for tracking
-                current_mb = current_bytes / (1024 * 1024)
+                # Update cumulative tracking (always increase, never decrease)
+                current_mb = total_bytes / (1024 * 1024)
                 if current_mb > self.usage_tracking[tunnel_id]:
                     self.usage_tracking[tunnel_id] = current_mb
                 
                 return self.usage_tracking[tunnel_id]
-            except (psutil.NoSuchProcess, psutil.AccessDenied, AttributeError, OSError) as e:
+            except (psutil.NoSuchProcess, psutil.AccessDenied, AttributeError, OSError):
                 # Return last known usage if process is gone
                 if tunnel_id in self.usage_tracking:
                     return self.usage_tracking[tunnel_id]
@@ -538,6 +518,7 @@ class RatholeAdapter:
         self.config_dir = Path("/etc/smite-node/rathole")
         self.config_dir.mkdir(parents=True, exist_ok=True)
         self.processes = {}  # Track running processes
+        self.usage_tracking = {}  # Track cumulative usage per tunnel
     
     def apply(self, tunnel_id: str, spec: Dict[str, Any]):
         """Apply Rathole tunnel"""
@@ -629,16 +610,39 @@ local_addr = "{local_addr}"
         }
     
     def get_usage_mb(self, tunnel_id: str) -> float:
-        """Get usage in MB"""
+        """Get usage in MB - tracks cumulative network I/O"""
         if tunnel_id in self.processes:
             proc = self.processes[tunnel_id]
             try:
                 proc_info = psutil.Process(proc.pid)
-                io_counters = proc_info.io_counters()
-                bytes_sent = io_counters.read_bytes + io_counters.write_bytes
-                return bytes_sent / (1024 * 1024)
-            except:
-                pass
+                # Get network connections to estimate traffic
+                connections = proc_info.connections()
+                
+                # Try to get network I/O from connections and process I/O
+                try:
+                    io_counters = proc_info.io_counters()
+                    # For network processes, most I/O is network-related
+                    # Estimate network bytes (read_bytes + write_bytes for network process)
+                    total_bytes = io_counters.read_bytes + io_counters.write_bytes
+                    
+                    # Track cumulative usage
+                    if tunnel_id not in self.usage_tracking:
+                        self.usage_tracking[tunnel_id] = 0.0
+                    
+                    # Update if we have new data (cumulative)
+                    current_mb = total_bytes / (1024 * 1024)
+                    if current_mb > self.usage_tracking[tunnel_id]:
+                        self.usage_tracking[tunnel_id] = current_mb
+                    
+                    return self.usage_tracking[tunnel_id]
+                except (psutil.NoSuchProcess, psutil.AccessDenied, AttributeError, OSError):
+                    # Return last known usage if process is gone
+                    if tunnel_id in self.usage_tracking:
+                        return self.usage_tracking[tunnel_id]
+            except (psutil.NoSuchProcess, psutil.AccessDenied, AttributeError, OSError):
+                # Return last known usage if process is gone
+                if tunnel_id in self.usage_tracking:
+                    return self.usage_tracking[tunnel_id]
         return 0.0
 
 

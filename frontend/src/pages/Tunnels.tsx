@@ -35,6 +35,10 @@ const Tunnels = () => {
       // Clean URL
       window.history.replaceState({}, '', '/tunnels')
     }
+    
+    // Refresh data every 30 seconds to update usage
+    const interval = setInterval(fetchData, 30000)
+    return () => clearInterval(interval)
   }, [])
 
   const fetchData = async () => {

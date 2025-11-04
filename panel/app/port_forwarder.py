@@ -137,20 +137,23 @@ class PortForwarder:
                 try:
                     while True:
                         try:
-                            # Use read with timeout to detect dead connections
-                            data = await asyncio.wait_for(src_reader.read(8192), timeout=300.0)
+                            # Use shorter timeout for better responsiveness
+                            data = await asyncio.wait_for(src_reader.read(8192), timeout=60.0)
                             if not data:
                                 break
                             dst_writer.write(data)
                             await dst_writer.drain()
                         except asyncio.TimeoutError:
-                            # Send keep-alive or check if connection is alive
+                            # Connection idle - keep it alive by checking if still connected
+                            # Don't write empty data, just check if writer is still open
                             try:
-                                dst_writer.write(b'')
-                                await dst_writer.drain()
+                                if dst_writer.is_closing():
+                                    break
+                                # Try a small keep-alive packet
+                                await asyncio.wait_for(dst_writer.drain(), timeout=1.0)
                             except:
                                 break
-                        except (ConnectionResetError, BrokenPipeError, OSError) as e:
+                        except (ConnectionResetError, BrokenPipeError, OSError, ConnectionAbortedError) as e:
                             logger.debug(f"Connection {direction} reset: {e}")
                             break
                 except Exception as e:
