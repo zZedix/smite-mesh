@@ -64,11 +64,15 @@ async def create_tunnel(tunnel: TunnelCreate, request: Request, db: AsyncSession
     """Create a new tunnel and auto-apply it"""
     from app.hysteria2_client import Hysteria2Client
     
+    debug_print(f"DEBUG: create_tunnel called - name={tunnel.name}, type={tunnel.type}, core={tunnel.core}, node_id={tunnel.node_id}")
+    
     # Verify node exists
     result = await db.execute(select(Node).where(Node.id == tunnel.node_id))
     node = result.scalar_one_or_none()
     if not node:
         raise HTTPException(status_code=404, detail="Node not found")
+    
+    debug_print(f"DEBUG: Node found: {node.id}, metadata: {node.node_metadata}")
     
     # Create tunnel
     db_tunnel = Tunnel(
