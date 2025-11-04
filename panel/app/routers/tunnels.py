@@ -149,9 +149,11 @@ async def create_tunnel(tunnel: TunnelCreate, request: Request, db: AsyncSession
                     debug_print(f"DEBUG: INSIDE if needs_gost_forwarding block!")
                     debug_print(f"DEBUG: Entering gost forwarding block for tunnel {db_tunnel.id}")
                     # panel_port: port on panel where gost listens (remote_port from spec)
-                    # node_port: port on node where xray listens (listen_port from spec)
+                    # node_port: port on node where xray listens
+                    # Node uses: remote_port OR listen_port (node prioritizes remote_port)
                     panel_port = db_tunnel.spec.get("remote_port") or db_tunnel.spec.get("listen_port")
-                    node_port = db_tunnel.spec.get("listen_port") or db_tunnel.spec.get("remote_port")
+                    # Use remote_port first (node prioritizes it), fallback to listen_port
+                    node_port = db_tunnel.spec.get("remote_port") or db_tunnel.spec.get("listen_port")
                     debug_print(f"DEBUG: Tunnel {db_tunnel.id}: panel_port={panel_port}, node_port={node_port}, spec={db_tunnel.spec}")
                     debug_print(f"DEBUG: Tunnel {db_tunnel.id}: has gost_forwarder={hasattr(request.app.state, 'gost_forwarder')}")
                     if panel_port and node_port and hasattr(request.app.state, 'gost_forwarder'):
