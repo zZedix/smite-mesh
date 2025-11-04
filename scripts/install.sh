@@ -250,13 +250,15 @@ echo "Starting Smite Panel..."
 if [ "$NGINX_ENABLED" = "true" ]; then
     # Start with nginx profile
     export NGINX_ENABLED=true
-    docker compose --profile https up -d
     
-    # Wait a bit for services to start
-    echo "Waiting for services to start..."
+    # First start panel (will use host networking)
+    docker compose up -d smite-panel
+    
+    # Wait a bit for panel to start
+    echo "Waiting for panel to start..."
     sleep 5
     
-    # Set up SSL certificates
+    # Set up SSL certificates BEFORE starting nginx
     if [ -n "$DOMAIN" ] && [ -n "$DOMAIN_EMAIL" ]; then
         echo ""
         echo "Setting up SSL certificates..."
@@ -265,12 +267,17 @@ if [ "$NGINX_ENABLED" = "true" ]; then
             echo -e "${YELLOW}Warning: SSL setup had issues. You can configure it manually later.${NC}"
         }
         
-        # Update nginx config with domain and restart
+        # Update nginx config with domain
         if [ -f "nginx/nginx.conf" ]; then
             sed -i "s/REPLACE_DOMAIN/$DOMAIN/g" nginx/nginx.conf 2>/dev/null || true
-            docker restart smite-nginx > /dev/null 2>&1 || true
         fi
     fi
+    
+    # Now start nginx with https profile
+    docker compose --profile https up -d nginx
+    
+    # Wait for nginx
+    sleep 3
 else
     # Start without nginx (direct access)
     docker compose up -d
