@@ -103,16 +103,20 @@ class GostForwarder:
                 debug_print(f"About to start subprocess.Popen with cmd={cmd}")
                 # Use log file for debugging (keep file open for subprocess)
                 log_file = self.config_dir / f"gost_{tunnel_id}.log"
-                log_f = open(log_file, 'w')
+                log_f = open(log_file, 'w', buffering=1)  # Line buffered
                 log_f.write(f"Starting gost with command: {' '.join(cmd)}\n")
+                log_f.write(f"PID will be set after process starts\n")
                 log_f.flush()
                 proc = subprocess.Popen(
                     cmd,
                     stdout=log_f,
                     stderr=subprocess.STDOUT,  # Combine stderr with stdout
                     cwd=str(self.config_dir),
-                    start_new_session=True  # Detach from parent process group
+                    start_new_session=True,  # Detach from parent process group
+                    close_fds=False  # Don't close file descriptors
                 )
+                log_f.write(f"Process started with PID: {proc.pid}\n")
+                log_f.flush()
                 # Store file handle so we can close it later
                 self.active_forwards[f"{tunnel_id}_log"] = log_f
                 debug_print(f"subprocess.Popen returned, PID={proc.pid}")
@@ -124,8 +128,8 @@ class GostForwarder:
                 raise RuntimeError(error_msg)
             
             # Wait a moment to check if process started successfully
-            debug_print(f"Waiting 0.5s to check if process is still alive...")
-            time.sleep(0.5)
+            debug_print(f"Waiting 1s to check if process is still alive...")
+            time.sleep(1.0)
             poll_result = proc.poll()
             debug_print(f"Process poll result: {poll_result} (None means still running)")
             if poll_result is not None:
@@ -149,6 +153,25 @@ class GostForwarder:
                 debug_print(f"ERROR: {error_msg}")
                 logger.error(error_msg)
                 raise RuntimeError(error_msg)
+            
+            # Verify port is actually listening (check after a short delay)
+            debug_print(f"Waiting 0.5s more, then checking if port {local_port} is listening...")
+            time.sleep(0.5)
+            import socket
+            try:
+                sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                sock.settimeout(1)
+                result = sock.connect_ex(('127.0.0.1', local_port))
+                sock.close()
+                if result == 0:
+                    debug_print(f"✅ Port {local_port} is listening!")
+                else:
+                    debug_print(f"⚠️ Warning: Port {local_port} is NOT listening (connection result: {result})")
+                    # Don't fail, but log warning - port might be in use or process might be starting
+                    logger.warning(f"Port {local_port} not listening after gost start, but process is running. PID: {proc.pid}")
+            except Exception as e:
+                debug_print(f"Exception checking port: {e}")
+                logger.warning(f"Could not verify port {local_port} is listening: {e}")
             
             self.active_forwards[tunnel_id] = proc
             self.forward_configs[tunnel_id] = {
