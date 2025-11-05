@@ -193,9 +193,9 @@ async def create_tunnel(tunnel: TunnelCreate, request: Request, db: AsyncSession
                         logging.error(f"Failed to start Rathole server: {error_msg}")
                         db_tunnel.status = "error"
                         db_tunnel.error_message = f"Rathole server error: {error_msg}"
-            except Exception as e:
-                # Catch any exception in the forwarding setup
-                logger.error(f"Exception in forwarding setup for tunnel {db_tunnel.id}: {e}", exc_info=True)
+        except Exception as e:
+            # Catch any exception in the forwarding setup
+            logger.error(f"Exception in forwarding setup for tunnel {db_tunnel.id}: {e}", exc_info=True)
         
         await db.commit()
         await db.refresh(db_tunnel)
