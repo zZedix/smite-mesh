@@ -2,6 +2,7 @@
 Smite Node - Lightweight Agent
 """
 import asyncio
+import logging
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
@@ -11,6 +12,13 @@ from app.config import settings
 from app.routers import agent
 from app.hysteria2_client import Hysteria2Client
 from app.core_adapters import AdapterManager
+
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger(__name__)
 
 
 async def usage_reporting_task(app: FastAPI):

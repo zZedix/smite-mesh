@@ -691,15 +691,21 @@ class AdapterManager:
     
     async def apply_tunnel(self, tunnel_id: str, tunnel_type: str, spec: Dict[str, Any]):
         """Apply tunnel using appropriate adapter"""
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.info(f"AdapterManager.apply_tunnel called: tunnel_id={tunnel_id}, tunnel_type={tunnel_type}, spec={spec}")
+        
         adapter = self.get_adapter(tunnel_type)
         if not adapter:
             raise ValueError(f"Unknown tunnel type: {tunnel_type}")
         
+        logger.info(f"Using adapter: {adapter.name}")
         adapter.apply(tunnel_id, spec)
         self.active_tunnels[tunnel_id] = adapter
         # Initialize usage tracking
         if tunnel_id not in self.usage_tracking:
             self.usage_tracking[tunnel_id] = 0.0
+        logger.info(f"Tunnel {tunnel_id} applied successfully")
     
     async def remove_tunnel(self, tunnel_id: str):
         """Remove tunnel"""
