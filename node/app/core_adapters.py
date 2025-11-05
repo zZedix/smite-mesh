@@ -90,9 +90,12 @@ class TCPAdapter:
         
         # Start xray-core
         import logging
+        import sys
         logger = logging.getLogger(__name__)
         
         try:
+            print(f"🔵 XRAY: Starting Xray for tunnel {tunnel_id} with config: {config_path}", file=sys.stderr, flush=True)
+            print(f"🔵 XRAY: Config: {json.dumps(config, indent=2)}", file=sys.stderr, flush=True)
             logger.info(f"Starting Xray for tunnel {tunnel_id} with config: {config_path}")
             logger.info(f"Xray config: {json.dumps(config, indent=2)}")
             proc = subprocess.Popen(
@@ -101,6 +104,7 @@ class TCPAdapter:
                 stderr=subprocess.PIPE
             )
             self.processes[tunnel_id] = proc
+            print(f"🔵 XRAY: Process started with PID: {proc.pid}", file=sys.stderr, flush=True)
             logger.info(f"Xray process started with PID: {proc.pid}")
             time.sleep(1.0)  # Give it more time to start
             poll_result = proc.poll()
@@ -109,8 +113,10 @@ class TCPAdapter:
                 stderr = proc.stderr.read().decode() if proc.stderr else "Unknown error"
                 stdout = proc.stdout.read().decode() if proc.stdout else ""
                 error_msg = f"xray failed to start (exit code: {poll_result}): stderr={stderr}, stdout={stdout}"
+                print(f"❌ XRAY: {error_msg}", file=sys.stderr, flush=True)
                 logger.error(error_msg)
                 raise RuntimeError(error_msg)
+            print(f"✅ XRAY: Process {proc.pid} is running for tunnel {tunnel_id}", file=sys.stderr, flush=True)
             logger.info(f"Xray process {proc.pid} is running for tunnel {tunnel_id}")
         except FileNotFoundError:
             logger.warning("Xray not found at /usr/local/bin/xray, trying system xray")
@@ -692,19 +698,26 @@ class AdapterManager:
     async def apply_tunnel(self, tunnel_id: str, tunnel_type: str, spec: Dict[str, Any]):
         """Apply tunnel using appropriate adapter"""
         import logging
+        import sys
         logger = logging.getLogger(__name__)
+        print(f"🔵 ADAPTER_MANAGER: apply_tunnel called: tunnel_id={tunnel_id}, tunnel_type={tunnel_type}, spec={spec}", file=sys.stderr, flush=True)
         logger.info(f"AdapterManager.apply_tunnel called: tunnel_id={tunnel_id}, tunnel_type={tunnel_type}, spec={spec}")
         
         adapter = self.get_adapter(tunnel_type)
         if not adapter:
-            raise ValueError(f"Unknown tunnel type: {tunnel_type}")
+            error_msg = f"Unknown tunnel type: {tunnel_type}"
+            print(f"❌ ADAPTER_MANAGER: {error_msg}", file=sys.stderr, flush=True)
+            raise ValueError(error_msg)
         
+        print(f"🔵 ADAPTER_MANAGER: Using adapter: {adapter.name}", file=sys.stderr, flush=True)
         logger.info(f"Using adapter: {adapter.name}")
+        print(f"🔵 ADAPTER_MANAGER: Calling adapter.apply({tunnel_id}, {spec})...", file=sys.stderr, flush=True)
         adapter.apply(tunnel_id, spec)
         self.active_tunnels[tunnel_id] = adapter
         # Initialize usage tracking
         if tunnel_id not in self.usage_tracking:
             self.usage_tracking[tunnel_id] = 0.0
+        print(f"✅ ADAPTER_MANAGER: Tunnel {tunnel_id} applied successfully", file=sys.stderr, flush=True)
         logger.info(f"Tunnel {tunnel_id} applied successfully")
     
     async def remove_tunnel(self, tunnel_id: str):
