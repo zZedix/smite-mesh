@@ -143,9 +143,9 @@ async def create_tunnel(tunnel: TunnelCreate, request: Request, db: AsyncSession
         debug_print("DEBUG: About to enter try block for forwarding setup")
         try:
             debug_print("DEBUG: Inside try block for forwarding setup")
-            # Start forwarding on panel using gost (for TCP/UDP/WS/gRPC tunnels)
+            # Start forwarding on panel using gost (for TCP/UDP/WS/gRPC/tcpmux tunnels)
             # Rathole: reverse tunnel, needs Rathole server on panel
-            needs_gost_forwarding = db_tunnel.type in ["tcp", "udp", "ws", "grpc"] and db_tunnel.core == "xray"
+            needs_gost_forwarding = db_tunnel.type in ["tcp", "udp", "ws", "grpc", "tcpmux"] and db_tunnel.core == "xray"
             needs_rathole_server = db_tunnel.core == "rathole"
             
             debug_print(f"DEBUG: Calculated needs_gost_forwarding={needs_gost_forwarding}, needs_rathole_server={needs_rathole_server}")

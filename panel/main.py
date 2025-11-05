@@ -93,8 +93,8 @@ async def _restore_forwards():
             
             for tunnel in tunnels:
                 logger.info(f"Checking tunnel {tunnel.id}: type={tunnel.type}, core={tunnel.core}")
-                # Only restore xray tunnels (tcp, udp, ws, grpc) - these use gost and forward directly
-                needs_gost_forwarding = tunnel.type in ["tcp", "udp", "ws", "grpc"] and tunnel.core == "xray"
+                # Only restore xray tunnels (tcp, udp, ws, grpc, tcpmux) - these use gost and forward directly
+                needs_gost_forwarding = tunnel.type in ["tcp", "udp", "ws", "grpc", "tcpmux"] and tunnel.core == "xray"
                 if not needs_gost_forwarding:
                     continue
                 

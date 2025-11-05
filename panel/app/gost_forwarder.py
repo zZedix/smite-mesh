@@ -70,6 +70,14 @@ class GostForwarder:
                     f"-L=grpc://0.0.0.0:{local_port}",
                     f"-F=tcp://{forward_to}"
                 ]
+            elif tunnel_type == "tcpmux":
+                # TCPMux forwarding (no TLS): gost -L=tcpmux://0.0.0.0:local_port -F=tcp://forward_to
+                # Note: tcpmux:// is plain TCP, no TLS. Use tcpmux+tls:// for TLS.
+                cmd = [
+                    "/usr/local/bin/gost",
+                    f"-L=tcpmux://0.0.0.0:{local_port}",
+                    f"-F=tcp://{forward_to}"
+                ]
             else:
                 raise ValueError(f"Unsupported tunnel type: {tunnel_type}")
             
