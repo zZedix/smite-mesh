@@ -223,6 +223,7 @@ const EditTunnelModal = ({ tunnel, onClose, onSuccess }: EditTunnelModalProps) =
   const [formData, setFormData] = useState({
     name: tunnel.name,
     remote_port: tunnel.spec?.remote_port || tunnel.spec?.listen_port || 10000,
+    forward_to: tunnel.spec?.forward_to || '',
     forward_port: tunnel.spec?.forward_to ? tunnel.spec.forward_to.split(':')[1] : '',
     rathole_remote_addr: tunnel.spec?.remote_addr || '',
     rathole_local_port: tunnel.spec?.local_addr ? tunnel.spec.local_addr.split(':')[1] : '',
@@ -332,22 +333,31 @@ const EditTunnelModal = ({ tunnel, onClose, onSuccess }: EditTunnelModalProps) =
             </>
           )}
           
-          {tunnel.core === 'xray' && (tunnel.type === 'tcp' || tunnel.type === 'ws' || tunnel.type === 'grpc') && (
+          {tunnel.core === 'xray' && (tunnel.type === 'tcp' || tunnel.type === 'udp' || tunnel.type === 'ws' || tunnel.type === 'grpc' || tunnel.type === 'tcpmux') && (
             <div>
               <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                Xray Panel Port
+                Forward To
               </label>
               <input
-                type="number"
-                value={formData.forward_port}
-                onChange={(e) =>
-                  setFormData({ ...formData, forward_port: e.target.value })
-                }
+                type="text"
+                value={formData.forward_to || (formData.forward_port ? `127.0.0.1:${formData.forward_port}` : '127.0.0.1:2053')}
+                onChange={(e) => {
+                  const value = e.target.value || '127.0.0.1:2053'
+                  setFormData({ ...formData, forward_to: value })
+                  // Extract port for backward compatibility
+                  if (value.includes(':')) {
+                    const parts = value.split(':')
+                    if (parts.length >= 2) {
+                      setFormData(prev => ({ ...prev, forward_port: parts[parts.length - 1] }))
+                    }
+                  }
+                }}
                 className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg dark:bg-gray-700 dark:text-white"
-                placeholder="2053"
-                min="1"
-                max="65535"
+                placeholder="127.0.0.1:2053"
               />
+              <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                Target address (host:port) to forward traffic to
+              </p>
             </div>
           )}
           
