@@ -184,6 +184,14 @@ class GostForwarder:
                 logger.warning(f"Error stopping gost forward for tunnel {tunnel_id}: {e}")
             finally:
                 del self.active_forwards[tunnel_id]
+                # Close log file if it exists
+                log_key = f"{tunnel_id}_log"
+                if log_key in self.active_forwards:
+                    try:
+                        self.active_forwards[log_key].close()
+                    except:
+                        pass
+                    del self.active_forwards[log_key]
                 logger.info(f"Stopped gost forwarding for tunnel {tunnel_id}")
         
         if tunnel_id in self.forward_configs:
