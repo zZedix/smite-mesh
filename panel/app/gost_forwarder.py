@@ -151,32 +151,32 @@ class GostForwarder:
             
             if tunnel_type != "udp":
                 time.sleep(0.5)
-                import socket
-                port_listening = False
-                try:
-                    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-                    sock.settimeout(1)
-                    result = sock.connect_ex(('127.0.0.1', local_port))
-                    sock.close()
-                    port_listening = (result == 0)
-                    if not port_listening:
-                        try:
-                            sock = socket.socket(socket.AF_INET6, socket.SOCK_STREAM)
-                            sock.settimeout(1)
-                            result = sock.connect_ex(('::1', local_port))
-                            sock.close()
-                            port_listening = (result == 0)
-                        except:
-                            pass
-                    if not port_listening:
-                        time.sleep(0.5)
+                poll_result = proc.poll()
+                if poll_result is not None:
+                    try:
+                        if log_file.exists():
+                            with open(log_file, 'r') as f:
+                                error_output = f.read()
+                            error_msg = f"gost process died after startup (exit code: {poll_result}): {error_output[-500:] if len(error_output) > 500 else error_output}"
+                        else:
+                            error_msg = f"gost process died after startup (exit code: {poll_result}), log file not found"
+                        logger.error(error_msg)
+                        raise RuntimeError(error_msg)
+                    except Exception as e:
+                        error_msg = f"gost process died after startup (exit code: {poll_result}), could not read error: {e}"
+                        logger.error(error_msg)
+                        raise RuntimeError(error_msg)
+                
+                if tunnel_type != "ws":
+                    import socket
+                    port_listening = False
+                    try:
                         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
                         sock.settimeout(1)
                         result = sock.connect_ex(('127.0.0.1', local_port))
                         sock.close()
-                        if result == 0:
-                            port_listening = True
-                        else:
+                        port_listening = (result == 0)
+                        if not port_listening:
                             try:
                                 sock = socket.socket(socket.AF_INET6, socket.SOCK_STREAM)
                                 sock.settimeout(1)
@@ -185,31 +185,50 @@ class GostForwarder:
                                 port_listening = (result == 0)
                             except:
                                 pass
-                        
-                    poll_result = proc.poll()
-                    if poll_result is not None:
-                        try:
-                            if log_file.exists():
-                                with open(log_file, 'r') as f:
-                                    error_output = f.read()
-                                error_msg = f"gost process died after startup (exit code: {poll_result}): {error_output[-500:] if len(error_output) > 500 else error_output}"
+                        if not port_listening:
+                            time.sleep(0.5)
+                            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                            sock.settimeout(1)
+                            result = sock.connect_ex(('127.0.0.1', local_port))
+                            sock.close()
+                            if result == 0:
+                                port_listening = True
                             else:
-                                error_msg = f"gost process died after startup (exit code: {poll_result}), log file not found"
+                                try:
+                                    sock = socket.socket(socket.AF_INET6, socket.SOCK_STREAM)
+                                    sock.settimeout(1)
+                                    result = sock.connect_ex(('::1', local_port))
+                                    sock.close()
+                                    port_listening = (result == 0)
+                                except:
+                                    pass
+                        
+                        poll_result = proc.poll()
+                        if poll_result is not None:
+                            try:
+                                if log_file.exists():
+                                    with open(log_file, 'r') as f:
+                                        error_output = f.read()
+                                    error_msg = f"gost process died after startup (exit code: {poll_result}): {error_output[-500:] if len(error_output) > 500 else error_output}"
+                                else:
+                                    error_msg = f"gost process died after startup (exit code: {poll_result}), log file not found"
+                                logger.error(error_msg)
+                                raise RuntimeError(error_msg)
+                            except Exception as e:
+                                error_msg = f"gost process died after startup (exit code: {poll_result}), could not read error: {e}"
+                                logger.error(error_msg)
+                                raise RuntimeError(error_msg)
+                        elif not port_listening:
+                            logger.warning(f"Port {local_port} not listening after gost start (checked IPv4 and IPv6), but process is running. PID: {proc.pid}")
+                    except Exception as e:
+                        logger.warning(f"Could not verify port {local_port} is listening: {e}")
+                        poll_result = proc.poll()
+                        if poll_result is not None:
+                            error_msg = f"gost process died during port check (exit code: {poll_result})"
                             logger.error(error_msg)
                             raise RuntimeError(error_msg)
-                        except Exception as e:
-                            error_msg = f"gost process died after startup (exit code: {poll_result}), could not read error: {e}"
-                            logger.error(error_msg)
-                            raise RuntimeError(error_msg)
-                    elif not port_listening:
-                        logger.warning(f"Port {local_port} not listening after gost start (checked IPv4 and IPv6), but process is running. PID: {proc.pid}")
-                except Exception as e:
-                    logger.warning(f"Could not verify port {local_port} is listening: {e}")
-                    poll_result = proc.poll()
-                    if poll_result is not None:
-                        error_msg = f"gost process died during port check (exit code: {poll_result})"
-                        logger.error(error_msg)
-                        raise RuntimeError(error_msg)
+                else:
+                    logger.info(f"WS tunnel on port {local_port}: skipping port verification (WebSocket requires handshake)")
             else:
                 time.sleep(0.5)
                 poll_result = proc.poll()
