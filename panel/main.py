@@ -100,13 +100,11 @@ async def _restore_forwards():
                 
                 try:
                     logger.info(f"Restoring gost forwarding for tunnel {tunnel.id}: {tunnel.type}://:{panel_port} -> {forward_to}")
-                    ws_path = tunnel.spec.get("path") if tunnel.type == "ws" else None
                     gost_forwarder.start_forward(
                         tunnel_id=tunnel.id,
                         local_port=int(panel_port),
                         forward_to=forward_to,
-                        tunnel_type=tunnel.type,
-                        path=ws_path
+                        tunnel_type=tunnel.type
                     )
                     logger.info(f"Successfully restored gost forwarding for tunnel {tunnel.id}")
                 except Exception as e:

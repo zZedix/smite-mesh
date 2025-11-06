@@ -198,13 +198,11 @@ async def create_tunnel(tunnel: TunnelCreate, request: Request, db: AsyncSession
                 if panel_port and forward_to and hasattr(request.app.state, 'gost_forwarder'):
                     try:
                         logger.info(f"Starting gost forwarding for tunnel {db_tunnel.id}: {db_tunnel.type}://:{panel_port} -> {forward_to}")
-                        ws_path = db_tunnel.spec.get("path") if db_tunnel.type == "ws" else None
                         request.app.state.gost_forwarder.start_forward(
                             tunnel_id=db_tunnel.id,
                             local_port=int(panel_port),
                             forward_to=forward_to,
-                            tunnel_type=db_tunnel.type,
-                            path=ws_path
+                            tunnel_type=db_tunnel.type
                         )
                         logger.info(f"Successfully started gost forwarding for tunnel {db_tunnel.id}")
                     except Exception as e:
@@ -311,13 +309,11 @@ async def update_tunnel(
                         import time
                         time.sleep(0.5)
                         logger.info(f"Restarting gost forwarding for tunnel {tunnel.id}: {tunnel.type}://:{panel_port} -> {forward_to}")
-                        ws_path = tunnel.spec.get("path") if tunnel.type == "ws" else None
                         request.app.state.gost_forwarder.start_forward(
                             tunnel_id=tunnel.id,
                             local_port=int(panel_port),
                             forward_to=forward_to,
-                            tunnel_type=tunnel.type,
-                            path=ws_path
+                            tunnel_type=tunnel.type
                         )
                         tunnel.status = "active"
                         tunnel.error_message = None
@@ -554,13 +550,11 @@ async def update_tunnel(tunnel_id: str, tunnel: TunnelUpdate, request: Request, 
                         
                         if panel_port and forward_to and hasattr(request.app.state, 'gost_forwarder'):
                             try:
-                                ws_path = db_tunnel.spec.get("path") if db_tunnel.type == "ws" else None
                                 request.app.state.gost_forwarder.start_forward(
                                     tunnel_id=db_tunnel.id,
                                     local_port=int(panel_port),
                                     forward_to=forward_to,
-                                    tunnel_type=db_tunnel.type,
-                                    path=ws_path
+                                    tunnel_type=db_tunnel.type
                                 )
                             except Exception as e:
                                 import logging
