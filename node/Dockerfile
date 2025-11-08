@@ -24,32 +24,13 @@ RUN set -eux; \
     RATHOLE_BIN="$(find "$TMP_DIR" -type f -name 'rathole' | head -n1)"; \
     install -Dm755 "$RATHOLE_BIN" /usr/local/bin/rathole; \
     rm -rf "$TMP_DIR"; \
-    RATHOLE_JSON="$(curl -fsSL https://api.github.com/repos/ginuerzh/gost/releases/latest)"; \
-    GOST_URL="$(printf '%s' "$RATHOLE_JSON" | jq -r --arg arch "$ARCH" '.assets[] | select(.name | test("linux-" + $arch)) | .browser_download_url' | head -n1)"; \
-    if [ -z "$GOST_URL" ] || [ "$GOST_URL" = "null" ]; then \
-        GOST_URL="https://github.com/ginuerzh/gost/releases/download/v2.12.0/gost-linux-$ARCH.gz"; \
-    fi; \
-    curl -fsSL "$GOST_URL" -o /tmp/gost.gz; \
-    case "$GOST_URL" in \
-        *.tar.gz|*.tgz) \
-            tar -xzf /tmp/gost.gz -C /tmp; \
-            GOST_BIN="$(find /tmp -type f -name 'gost' | head -n1)"; \
-            ;; \
-        *.zip) \
-            unzip -q /tmp/gost.gz -d /tmp/gost-unpack; \
-            GOST_BIN="$(find /tmp/gost-unpack -type f -name 'gost' | head -n1)"; \
-            ;; \
-        *.gz) \
-            gunzip -f /tmp/gost.gz; \
-            GOST_BIN="/tmp/gost"; \
-            ;; \
-        *) \
-            mv /tmp/gost.gz /tmp/gost; \
-            GOST_BIN="/tmp/gost"; \
-            ;; \
-    esac; \
+    GOST_URL="https://github.com/ginuerzh/gost/releases/download/v2.12.0/gost_2.12.0_linux_${ARCH}.tar.gz"; \
+    GOST_TMP="$(mktemp -d)"; \
+    curl -fsSL "$GOST_URL" -o "$GOST_TMP/gost.tar.gz"; \
+    tar -xzf "$GOST_TMP/gost.tar.gz" -C "$GOST_TMP"; \
+    GOST_BIN="$(find "$GOST_TMP" -type f -name 'gost' | head -n1)"; \
     install -Dm755 "$GOST_BIN" /usr/local/bin/gost; \
-    rm -rf /tmp/gost /tmp/gost-unpack 2>/dev/null || true; \
+    rm -rf "$GOST_TMP"; \
     /usr/local/bin/rathole --version || true; \
     /usr/local/bin/gost -V || true
 

@@ -25,10 +25,13 @@ RUN set -eux; \
     install -Dm755 "$RATHOLE_BIN" /usr/local/bin/rathole; \
     rm -rf "$RATHOLE_TMP"; \
     echo "Fetching gost release"; \
-    curl -fsSL "https://github.com/ginuerzh/gost/releases/download/v2.12.0/gost-linux-$ARCH.gz" -o /tmp/gost.gz; \
-    gunzip -f /tmp/gost.gz; \
-    install -Dm755 /tmp/gost /usr/local/bin/gost; \
-    rm -f /tmp/gost; \
+    GOST_URL="https://github.com/ginuerzh/gost/releases/download/v2.12.0/gost_2.12.0_linux_${ARCH}.tar.gz"; \
+    GOST_TMP="$(mktemp -d)"; \
+    curl -fsSL "$GOST_URL" -o "$GOST_TMP/gost.tar.gz"; \
+    tar -xzf "$GOST_TMP/gost.tar.gz" -C "$GOST_TMP"; \
+    GOST_BIN="$(find "$GOST_TMP" -type f -name 'gost' | head -n1)"; \
+    install -Dm755 "$GOST_BIN" /usr/local/bin/gost; \
+    rm -rf "$GOST_TMP"; \
     /usr/local/bin/rathole --version || true; \
     /usr/local/bin/gost -V || true
 
