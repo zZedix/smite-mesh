@@ -27,7 +27,9 @@ def _run_iptables(args: list, check: bool = True) -> subprocess.CompletedProcess
         logger.error(f"iptables command timed out: {' '.join(cmd)}")
         raise
     except subprocess.CalledProcessError as e:
-        logger.warning(f"iptables command failed: {' '.join(cmd)}: {e.stderr}")
+        error_msg = e.stderr if e.stderr else (e.stdout if e.stdout else str(e))
+        if check:
+            logger.warning(f"iptables command failed: {' '.join(cmd)}: {error_msg}")
         raise
 
 
@@ -53,31 +55,40 @@ def _run_ip6tables(args: list, check: bool = True) -> subprocess.CompletedProces
 
 def ensure_chain_exists():
     """Ensure the tracking chain exists"""
-    try:
-        # Check if chain exists
-        _run_iptables(["-L", CHAIN_NAME], check=False)
-    except subprocess.CalledProcessError:
+    # Check if chain exists for IPv4
+    result = _run_iptables(["-L", CHAIN_NAME], check=False)
+    if result.returncode != 0:
         # Chain doesn't exist, create it
         try:
             _run_iptables(["-N", CHAIN_NAME])
-            # Insert rule to jump to chain from INPUT and OUTPUT
-            _run_iptables(["-I", "INPUT", "-j", CHAIN_NAME], check=False)
-            _run_iptables(["-I", "OUTPUT", "-j", CHAIN_NAME], check=False)
             logger.info(f"Created iptables chain {CHAIN_NAME}")
+            # Insert rule to jump to chain from INPUT and OUTPUT (only if not already there)
+            # Check if jump rule already exists
+            input_check = _run_iptables(["-C", "INPUT", "-j", CHAIN_NAME], check=False)
+            if input_check.returncode != 0:
+                _run_iptables(["-I", "INPUT", "-j", CHAIN_NAME], check=False)
+            output_check = _run_iptables(["-C", "OUTPUT", "-j", CHAIN_NAME], check=False)
+            if output_check.returncode != 0:
+                _run_iptables(["-I", "OUTPUT", "-j", CHAIN_NAME], check=False)
         except subprocess.CalledProcessError as e:
-            logger.warning(f"Failed to create iptables chain: {e}")
+            logger.error(f"Failed to create iptables chain {CHAIN_NAME}: {e.stderr if hasattr(e, 'stderr') else str(e)}")
+            raise
     
-    try:
-        # Same for IPv6
-        _run_ip6tables(["-L", CHAIN_NAME], check=False)
-    except subprocess.CalledProcessError:
+    # Same for IPv6
+    result = _run_ip6tables(["-L", CHAIN_NAME], check=False)
+    if result.returncode != 0:
         try:
             _run_ip6tables(["-N", CHAIN_NAME])
-            _run_ip6tables(["-I", "INPUT", "-j", CHAIN_NAME], check=False)
-            _run_ip6tables(["-I", "OUTPUT", "-j", CHAIN_NAME], check=False)
             logger.info(f"Created ip6tables chain {CHAIN_NAME}")
+            input_check = _run_ip6tables(["-C", "INPUT", "-j", CHAIN_NAME], check=False)
+            if input_check.returncode != 0:
+                _run_ip6tables(["-I", "INPUT", "-j", CHAIN_NAME], check=False)
+            output_check = _run_ip6tables(["-C", "OUTPUT", "-j", CHAIN_NAME], check=False)
+            if output_check.returncode != 0:
+                _run_ip6tables(["-I", "OUTPUT", "-j", CHAIN_NAME], check=False)
         except subprocess.CalledProcessError as e:
-            logger.warning(f"Failed to create ip6tables chain: {e}")
+            logger.warning(f"Failed to create ip6tables chain {CHAIN_NAME}: {e.stderr if hasattr(e, 'stderr') else str(e)}")
+            # IPv6 might not be available, that's okay
 
 
 def parse_address_port(addr: str) -> Tuple[Optional[str], Optional[int], bool]:
