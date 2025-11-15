@@ -2,6 +2,7 @@
 Smite Panel - Central Controller
 """
 import os
+import asyncio
 from contextlib import asynccontextmanager
 from pathlib import Path
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -28,6 +29,87 @@ logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
 logger = logging.getLogger(__name__)
+
+
+async def gost_usage_reporting_task(app: FastAPI):
+    """Periodic task to collect and report GOST tunnel usage"""
+    usage_tracking = {}  # Track previous usage for each tunnel
+    
+    while True:
+        try:
+            await asyncio.sleep(60)  # Report every minute
+            
+            gost_forwarder = app.state.gost_forwarder
+            if not gost_forwarder:
+                continue
+            
+            async with AsyncSessionLocal() as db:
+                # Get all active GOST tunnels (GOST tunnels have core="xray" and type in ["tcp", "udp", "ws", "grpc", "tcpmux"])
+                result = await db.execute(
+                    select(Tunnel).where(
+                        Tunnel.status == "active",
+                        Tunnel.core == "xray",
+                        Tunnel.type.in_(["tcp", "udp", "ws", "grpc", "tcpmux"])
+                    )
+                )
+                tunnels = result.scalars().all()
+                
+                for tunnel in tunnels:
+                    try:
+                        usage_mb = gost_forwarder.get_usage_mb(tunnel.id)
+                        previous_mb = usage_tracking.get(tunnel.id, 0.0)
+                        
+                        if usage_mb > previous_mb:
+                            incremental_mb = usage_mb - previous_mb
+                            usage_tracking[tunnel.id] = usage_mb
+                            
+                            incremental_bytes = int(incremental_mb * 1024 * 1024)
+                            
+                            if incremental_bytes > 0:
+                                logger.debug(f"Reporting GOST usage for tunnel {tunnel.id}: {incremental_mb:.2f} MB (total: {usage_mb:.2f} MB)")
+                                # Update tunnel usage in database
+                                tunnel.used_mb = (tunnel.used_mb or 0.0) + incremental_mb
+                                
+                                # Create usage record
+                                from app.models import Usage
+                                usage_record = Usage(
+                                    tunnel_id=tunnel.id,
+                                    node_id=None,  # GOST tunnels don't have a node
+                                    bytes_used=incremental_bytes
+                                )
+                                db.add(usage_record)
+                                
+                                # Check quota
+                                if tunnel.quota_mb > 0 and tunnel.used_mb >= tunnel.quota_mb:
+                                    tunnel.status = "error"
+                                    logger.warning(f"GOST tunnel {tunnel.id} quota exceeded: {tunnel.used_mb:.2f} MB >= {tunnel.quota_mb:.2f} MB")
+                                
+                                await db.commit()
+                                await db.refresh(tunnel)
+                        elif previous_mb == 0.0 and usage_mb > 0:
+                            # First report - send initial usage
+                            usage_tracking[tunnel.id] = usage_mb
+                            initial_bytes = int(usage_mb * 1024 * 1024)
+                            if initial_bytes > 0:
+                                logger.debug(f"Reporting initial GOST usage for tunnel {tunnel.id}: {usage_mb:.2f} MB")
+                                tunnel.used_mb = (tunnel.used_mb or 0.0) + usage_mb
+                                
+                                from app.models import Usage
+                                usage_record = Usage(
+                                    tunnel_id=tunnel.id,
+                                    node_id=None,
+                                    bytes_used=initial_bytes
+                                )
+                                db.add(usage_record)
+                                await db.commit()
+                                await db.refresh(tunnel)
+                    except Exception as e:
+                        logger.warning(f"Failed to report GOST usage for tunnel {tunnel.id}: {e}", exc_info=True)
+        except asyncio.CancelledError:
+            break
+        except Exception as e:
+            logger.error(f"Error in GOST usage reporting task: {e}", exc_info=True)
+            await asyncio.sleep(60)
 
 
 @asynccontextmanager
@@ -63,7 +145,19 @@ async def lifespan(app: FastAPI):
     await _restore_rathole_servers()
     await _restore_backhaul_servers()
     
+    # Start GOST usage reporting task
+    gost_usage_task = asyncio.create_task(gost_usage_reporting_task(app))
+    app.state.gost_usage_task = gost_usage_task
+    
     yield
+    
+    # Cancel GOST usage reporting task
+    if hasattr(app.state, 'gost_usage_task'):
+        app.state.gost_usage_task.cancel()
+        try:
+            await app.state.gost_usage_task
+        except asyncio.CancelledError:
+            pass
     
     if hasattr(app.state, 'h2_server'):
         await app.state.h2_server.stop()

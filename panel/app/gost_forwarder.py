@@ -6,6 +6,11 @@ from pathlib import Path
 from typing import Dict, Optional
 
 from app.utils import parse_address_port, format_address_port
+from app.iptables_tracker import (
+    add_tracking_rule,
+    remove_tracking_rule,
+    get_traffic_bytes
+)
 
 logger = logging.getLogger(__name__)
 
@@ -18,6 +23,8 @@ class GostForwarder:
         self.config_dir.mkdir(parents=True, exist_ok=True)
         self.active_forwards: Dict[str, subprocess.Popen] = {}
         self.forward_configs: Dict[str, dict] = {}
+        self.tunnel_ports: Dict[str, tuple] = {}  # Track ports for iptables tracking
+        self.iptables_baseline: Dict[str, int] = {}  # Track baseline iptables counter when rule is added
     
     def start_forward(self, tunnel_id: str, local_port: int, forward_to: str, tunnel_type: str = "tcp", path: str = None) -> bool:
         """
@@ -248,6 +255,24 @@ class GostForwarder:
                 "tunnel_type": tunnel_type
             }
             
+            # Add iptables tracking for the local port
+            try:
+                # Always remove existing rule first to reset counter, then add fresh rule
+                try:
+                    remove_tracking_rule(tunnel_id, local_port, False)
+                except:
+                    pass  # Rule might not exist, that's fine
+                
+                # Add fresh rule (counter will start at 0)
+                add_tracking_rule(tunnel_id, local_port, False)
+                # Get baseline immediately after rule creation (should be 0)
+                baseline_bytes = get_traffic_bytes(tunnel_id, local_port, False)
+                self.iptables_baseline[tunnel_id] = baseline_bytes
+                self.tunnel_ports[tunnel_id] = (local_port, False)
+                logger.info(f"Added iptables tracking for GOST tunnel {tunnel_id} on port {local_port}, baseline: {baseline_bytes} bytes")
+            except Exception as e:
+                logger.error(f"Failed to add iptables tracking for GOST tunnel {tunnel_id}: {e}", exc_info=True)
+            
             logger.info(f"Started gost forwarding for tunnel {tunnel_id}: {tunnel_type}://:{local_port} -> {forward_to}, PID={proc.pid}")
             return True
             
@@ -257,6 +282,17 @@ class GostForwarder:
     
     def stop_forward(self, tunnel_id: str):
         """Stop forwarding for a tunnel"""
+        # Remove iptables tracking
+        if tunnel_id in self.tunnel_ports:
+            port, is_ipv6 = self.tunnel_ports[tunnel_id]
+            try:
+                remove_tracking_rule(tunnel_id, port, is_ipv6)
+            except Exception as e:
+                logger.warning(f"Failed to remove iptables tracking for GOST tunnel {tunnel_id}: {e}")
+            del self.tunnel_ports[tunnel_id]
+            if tunnel_id in self.iptables_baseline:
+                del self.iptables_baseline[tunnel_id]
+        
         if tunnel_id in self.active_forwards:
             proc = self.active_forwards[tunnel_id]
             try:
@@ -323,6 +359,28 @@ class GostForwarder:
                 if tunnel_id in self.forward_configs:
                     del self.forward_configs[tunnel_id]
         return active
+    
+    def get_usage_mb(self, tunnel_id: str) -> float:
+        """Get usage in MB for a GOST tunnel"""
+        total_bytes = 0.0
+        
+        if tunnel_id in self.tunnel_ports:
+            port, is_ipv6 = self.tunnel_ports[tunnel_id]
+            try:
+                current_iptables_bytes = get_traffic_bytes(tunnel_id, port, is_ipv6)
+                # Get baseline (counter when rule was first added, should be 0)
+                baseline = self.iptables_baseline.get(tunnel_id, 0)
+                # Calculate actual usage as difference from baseline
+                iptables_bytes = max(0, current_iptables_bytes - baseline)
+                if iptables_bytes > 0:
+                    logger.debug(f"GOST tunnel {tunnel_id} (port {port}): iptables current={current_iptables_bytes} bytes, baseline={baseline} bytes, usage={iptables_bytes} bytes ({iptables_bytes/(1024*1024):.2f} MB)")
+                total_bytes = iptables_bytes
+            except Exception as e:
+                logger.warning(f"Failed to get iptables bytes for GOST tunnel {tunnel_id}: {e}", exc_info=True)
+        else:
+            logger.debug(f"GOST tunnel {tunnel_id} not found in tunnel_ports - no tracking configured")
+        
+        return total_bytes / (1024 * 1024)
     
     def cleanup_all(self):
         """Stop all forwarding"""
