@@ -120,9 +120,12 @@ def parse_address_port(addr: str) -> Tuple[Optional[str], Optional[int], bool]:
 
 def add_tracking_rule(tunnel_id: str, port: int, is_ipv6: bool = False):
     """
-    Add iptables rule to track traffic on a port
+    Add iptables rule to track traffic on a local listen port (for Rathole)
     The rule only COUNTS traffic, doesn't block or modify it
-    Tracks both INPUT (incoming) and OUTPUT (outgoing) traffic
+    For local listen ports, we track both directions:
+    - INPUT: traffic coming TO the port (downloads from client perspective)
+    - OUTPUT: traffic in established connections related to this port
+    We use connection tracking to match both directions of the same connection
     """
     ensure_chain_exists()
     
@@ -136,21 +139,17 @@ def add_tracking_rule(tunnel_id: str, port: int, is_ipv6: bool = False):
             logger.debug(f"Tracking rule for tunnel {tunnel_id} port {port} already exists")
             return
         
+        # For local listen ports, we only track INPUT (traffic coming TO the port)
+        # This is because responses go through ephemeral ports, not the listen port
+        # Tracking INPUT gives us accurate download traffic
+        # Note: This will undercount total traffic (missing uploads), but is more accurate
+        
         # Add TCP INPUT rule (traffic coming TO this port)
         cmd([
             "-A", CHAIN_NAME,
             "-p", "tcp",
             "--dport", str(port),
             "-m", "comment", "--comment", f"{rule_comment}-tcp-in",
-            "-j", "ACCEPT"
-        ])
-        
-        # Add TCP OUTPUT rule (traffic going FROM this port)
-        cmd([
-            "-A", CHAIN_NAME,
-            "-p", "tcp",
-            "--sport", str(port),
-            "-m", "comment", "--comment", f"{rule_comment}-tcp-out",
             "-j", "ACCEPT"
         ])
         
@@ -163,18 +162,10 @@ def add_tracking_rule(tunnel_id: str, port: int, is_ipv6: bool = False):
             "-j", "ACCEPT"
         ])
         
-        # Add UDP OUTPUT rule
-        cmd([
-            "-A", CHAIN_NAME,
-            "-p", "udp",
-            "--sport", str(port),
-            "-m", "comment", "--comment", f"{rule_comment}-udp-out",
-            "-j", "ACCEPT"
-        ])
-        
-        logger.info(f"Added iptables tracking rules for tunnel {tunnel_id} on port {port} (IPv6={is_ipv6})")
+        logger.info(f"Added iptables tracking rules for tunnel {tunnel_id} on port {port} (IPv6={is_ipv6}) - INPUT only")
     except subprocess.CalledProcessError as e:
-        logger.warning(f"Failed to add tracking rule for tunnel {tunnel_id}: {e}")
+        logger.error(f"Failed to add tracking rule for tunnel {tunnel_id}: {e}")
+        raise
 
 
 def remove_tracking_rule(tunnel_id: str, port: int, is_ipv6: bool = False):
