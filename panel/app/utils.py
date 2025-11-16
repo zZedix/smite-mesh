@@ -4,24 +4,24 @@ import re
 from typing import Tuple, Optional
 
 
-def parse_address_port(address_str: str) -> Tuple[str, Optional[int]]:
+def parse_address_port(address_str: str) -> Tuple[str, Optional[int], bool]:
     """
     Parse an address:port string, handling both IPv4 and IPv6 addresses.
     
     Supports formats:
-    - IPv4: "127.0.0.1:8080" -> ("127.0.0.1", 8080)
-    - IPv6: "[2001:db8::1]:8080" -> ("2001:db8::1", 8080)
-    - IPv6: "2001:db8::1" -> ("2001:db8::1", None)
-    - Hostname: "example.com:8080" -> ("example.com", 8080)
+    - IPv4: "127.0.0.1:8080" -> ("127.0.0.1", 8080, False)
+    - IPv6: "[2001:db8::1]:8080" -> ("2001:db8::1", 8080, True)
+    - IPv6: "2001:db8::1" -> ("2001:db8::1", None, True)
+    - Hostname: "example.com:8080" -> ("example.com", 8080, False)
     
     Args:
         address_str: Address string in format "host:port" or "[ipv6]:port"
         
     Returns:
-        Tuple of (host, port) where port is None if not specified
+        Tuple of (host, port, is_ipv6) where port is None if not specified
     """
     if not address_str:
-        return ("", None)
+        return ("", None, False)
     
     address_str = address_str.strip()
     
@@ -31,14 +31,14 @@ def parse_address_port(address_str: str) -> Tuple[str, Optional[int]]:
         host = ipv6_bracket_match.group(1)
         port_str = ipv6_bracket_match.group(2)
         port = int(port_str) if port_str else None
-        return (host, port)
+        return (host, port, True)
     
     # Check if it's a bare IPv6 address (no brackets, no port)
     # IPv6 addresses contain colons, so we need to check if it's a valid IPv6
     try:
         ipaddress.IPv6Address(address_str)
         # It's a valid IPv6 address without port
-        return (address_str, None)
+        return (address_str, None, True)
     except (ValueError, ipaddress.AddressValueError):
         pass
     
@@ -54,18 +54,18 @@ def parse_address_port(address_str: str) -> Tuple[str, Optional[int]]:
             try:
                 ipaddress.IPv6Address(host_part)
                 # It's an IPv6 address, return as-is with port
-                return (host_part, int(port_str))
+                return (host_part, int(port_str), True)
             except (ValueError, ipaddress.AddressValueError):
                 # It's IPv4 or hostname
                 try:
                     port = int(port_str)
-                    return (host_part, port)
+                    return (host_part, port, False)
                 except ValueError:
                     # Port is not a number, treat entire string as host
-                    return (address_str, None)
+                    return (address_str, None, False)
     
     # No port specified
-    return (address_str, None)
+    return (address_str, None, False)
 
 
 def format_address_port(host: str, port: Optional[int] = None) -> str:

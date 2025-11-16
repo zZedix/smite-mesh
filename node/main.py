@@ -20,58 +20,6 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
-async def usage_reporting_task(app: FastAPI):
-    """Periodic task to collect and report usage"""
-    import asyncio
-    while True:
-        try:
-            await asyncio.sleep(60)
-            
-            adapter_manager = app.state.adapter_manager
-            h2_client = app.state.h2_client
-            
-            if not adapter_manager or not h2_client or not hasattr(h2_client, 'node_id') or not h2_client.node_id:
-                continue
-            
-            for tunnel_id, adapter in adapter_manager.active_tunnels.items():
-                try:
-                    usage_mb = adapter.get_usage_mb(tunnel_id)
-                    
-                    previous_mb = adapter_manager.usage_tracking.get(tunnel_id, 0.0)
-                    
-                    if usage_mb > previous_mb:
-                        incremental_mb = usage_mb - previous_mb
-                        adapter_manager.usage_tracking[tunnel_id] = usage_mb
-                        
-                        incremental_bytes = int(incremental_mb * 1024 * 1024)
-                        
-                        if incremental_bytes > 0:
-                            logger.debug(f"Reporting usage for tunnel {tunnel_id}: {incremental_mb:.2f} MB (total: {usage_mb:.2f} MB)")
-                            await h2_client.push_usage_to_panel(
-                                tunnel_id=tunnel_id,
-                                node_id=h2_client.node_id,
-                                bytes_used=incremental_bytes
-                            )
-                    elif previous_mb == 0.0 and usage_mb > 0:
-                        # First report - send initial usage
-                        adapter_manager.usage_tracking[tunnel_id] = usage_mb
-                        initial_bytes = int(usage_mb * 1024 * 1024)
-                        if initial_bytes > 0:
-                            logger.debug(f"Reporting initial usage for tunnel {tunnel_id}: {usage_mb:.2f} MB")
-                            await h2_client.push_usage_to_panel(
-                                tunnel_id=tunnel_id,
-                                node_id=h2_client.node_id,
-                                bytes_used=initial_bytes
-                            )
-                except Exception as e:
-                    logger.warning(f"Failed to report usage for tunnel {tunnel_id}: {e}", exc_info=True)
-        except asyncio.CancelledError:
-            break
-        except Exception as e:
-            print(f"Error in usage reporting task: {e}")
-            await asyncio.sleep(60)
-
-
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Startup and shutdown events"""
@@ -94,17 +42,7 @@ async def lifespan(app: FastAPI):
     adapter_manager = AdapterManager()
     app.state.adapter_manager = adapter_manager
     
-    usage_task = asyncio.create_task(usage_reporting_task(app))
-    app.state.usage_task = usage_task
-    
     yield
-    
-    if hasattr(app.state, 'usage_task'):
-        app.state.usage_task.cancel()
-        try:
-            await app.state.usage_task
-        except asyncio.CancelledError:
-            pass
     if hasattr(app.state, 'h2_client') and app.state.h2_client:
         try:
             await app.state.h2_client.stop()

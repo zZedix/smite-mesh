@@ -6,11 +6,6 @@ from pathlib import Path
 from typing import Dict, Optional
 
 from app.utils import parse_address_port, format_address_port
-from app.iptables_tracker import (
-    add_tracking_rule,
-    remove_tracking_rule,
-    get_traffic_bytes
-)
 
 logger = logging.getLogger(__name__)
 
@@ -23,19 +18,18 @@ class GostForwarder:
         self.config_dir.mkdir(parents=True, exist_ok=True)
         self.active_forwards: Dict[str, subprocess.Popen] = {}
         self.forward_configs: Dict[str, dict] = {}
-        self.tunnel_ports: Dict[str, tuple] = {}  # Track ports for iptables tracking
-        self.iptables_baseline: Dict[str, int] = {}  # Track baseline iptables counter when rule is added
     
-    def start_forward(self, tunnel_id: str, local_port: int, forward_to: str, tunnel_type: str = "tcp", path: str = None) -> bool:
+    def start_forward(self, tunnel_id: str, local_port: int, forward_to: str, tunnel_type: str = "tcp", path: str = None, use_ipv6: bool = False) -> bool:
         """
         Start forwarding using gost - forwards directly to target (no node)
 
         Args:
             tunnel_id: Unique tunnel identifier
             local_port: Port on panel to listen on
-            forward_to: Target address:port (e.g., "127.0.0.1:9999" or "1.2.3.4:443")
+            forward_to: Target address:port (e.g., "127.0.0.1:9999" or "[2001:db8::1]:443")
             tunnel_type: Type of forwarding (tcp, udp, ws, grpc)
             path: Optional path for WS tunnels (ignored, kept for compatibility)
+            use_ipv6: Whether to use IPv6 for listening (default: False for IPv4)
 
         Returns:
             True if started successfully
@@ -47,32 +41,43 @@ class GostForwarder:
                 time.sleep(0.5)
             
             # Parse forward_to address (handles IPv4, IPv6, and hostnames)
-            forward_host, forward_port = parse_address_port(forward_to)
+            forward_host, forward_port, forward_is_ipv6 = parse_address_port(forward_to)
             if forward_port is None:
                 forward_port = 8080
             
             # Format target address for GOST (IPv6 needs brackets in URLs)
             target_addr = format_address_port(forward_host, forward_port)
             
+            # Determine listen address based on IPv6 preference
+            if use_ipv6:
+                listen_addr = f"[::]:{local_port}"
+            else:
+                listen_addr = f"0.0.0.0:{local_port}"
+            
             if tunnel_type == "tcp":
                 cmd = [
                     "/usr/local/bin/gost",
-                    f"-L=tcp://0.0.0.0:{local_port}/{target_addr}"
+                    f"-L=tcp://{listen_addr}/{target_addr}"
                 ]
             elif tunnel_type == "udp":
                 cmd = [
                     "/usr/local/bin/gost",
-                    f"-L=udp://0.0.0.0:{local_port}/{target_addr}"
+                    f"-L=udp://{listen_addr}/{target_addr}"
                 ]
             elif tunnel_type == "ws":
                 import socket
                 try:
-                    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-                    s.connect(("8.8.8.8", 80))
-                    bind_ip = s.getsockname()[0]
+                    if use_ipv6:
+                        s = socket.socket(socket.AF_INET6, socket.SOCK_DGRAM)
+                        s.connect(("2001:4860:4860::8888", 80))
+                        bind_ip = s.getsockname()[0]
+                    else:
+                        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+                        s.connect(("8.8.8.8", 80))
+                        bind_ip = s.getsockname()[0]
                     s.close()
                 except Exception:
-                    bind_ip = "0.0.0.0"
+                    bind_ip = "[::]" if use_ipv6 else "0.0.0.0"
                 cmd = [
                     "/usr/local/bin/gost",
                     f"-L=ws://{bind_ip}:{local_port}/tcp://{target_addr}"
@@ -80,12 +85,12 @@ class GostForwarder:
             elif tunnel_type == "grpc":
                 cmd = [
                     "/usr/local/bin/gost",
-                    f"-L=grpc://0.0.0.0:{local_port}/{target_addr}"
+                    f"-L=grpc://{listen_addr}/{target_addr}"
                 ]
             elif tunnel_type == "tcpmux":
                 cmd = [
                     "/usr/local/bin/gost",
-                    f"-L=tcpmux://0.0.0.0:{local_port}/{target_addr}"
+                    f"-L=tcpmux://{listen_addr}/{target_addr}"
                 ]
             else:
                 raise ValueError(f"Unsupported tunnel type: {tunnel_type}")
@@ -255,24 +260,6 @@ class GostForwarder:
                 "tunnel_type": tunnel_type
             }
             
-            # Add iptables tracking for the local port
-            try:
-                # Always remove existing rule first to reset counter, then add fresh rule
-                try:
-                    remove_tracking_rule(tunnel_id, local_port, False)
-                except:
-                    pass  # Rule might not exist, that's fine
-                
-                # Add fresh rule (counter will start at 0)
-                add_tracking_rule(tunnel_id, local_port, False)
-                # Get baseline immediately after rule creation (should be 0)
-                baseline_bytes = get_traffic_bytes(tunnel_id, local_port, False)
-                self.iptables_baseline[tunnel_id] = baseline_bytes
-                self.tunnel_ports[tunnel_id] = (local_port, False)
-                logger.info(f"Added iptables tracking for GOST tunnel {tunnel_id} on port {local_port}, baseline: {baseline_bytes} bytes")
-            except Exception as e:
-                logger.error(f"Failed to add iptables tracking for GOST tunnel {tunnel_id}: {e}", exc_info=True)
-            
             logger.info(f"Started gost forwarding for tunnel {tunnel_id}: {tunnel_type}://:{local_port} -> {forward_to}, PID={proc.pid}")
             return True
             
@@ -282,17 +269,6 @@ class GostForwarder:
     
     def stop_forward(self, tunnel_id: str):
         """Stop forwarding for a tunnel"""
-        # Remove iptables tracking
-        if tunnel_id in self.tunnel_ports:
-            port, is_ipv6 = self.tunnel_ports[tunnel_id]
-            try:
-                remove_tracking_rule(tunnel_id, port, is_ipv6)
-            except Exception as e:
-                logger.warning(f"Failed to remove iptables tracking for GOST tunnel {tunnel_id}: {e}")
-            del self.tunnel_ports[tunnel_id]
-            if tunnel_id in self.iptables_baseline:
-                del self.iptables_baseline[tunnel_id]
-        
         if tunnel_id in self.active_forwards:
             proc = self.active_forwards[tunnel_id]
             try:
@@ -359,28 +335,6 @@ class GostForwarder:
                 if tunnel_id in self.forward_configs:
                     del self.forward_configs[tunnel_id]
         return active
-    
-    def get_usage_mb(self, tunnel_id: str) -> float:
-        """Get usage in MB for a GOST tunnel"""
-        total_bytes = 0.0
-        
-        if tunnel_id in self.tunnel_ports:
-            port, is_ipv6 = self.tunnel_ports[tunnel_id]
-            try:
-                current_iptables_bytes = get_traffic_bytes(tunnel_id, port, is_ipv6)
-                # Get baseline (counter when rule was first added, should be 0)
-                baseline = self.iptables_baseline.get(tunnel_id, 0)
-                # Calculate actual usage as difference from baseline
-                iptables_bytes = max(0, current_iptables_bytes - baseline)
-                if iptables_bytes > 0:
-                    logger.debug(f"GOST tunnel {tunnel_id} (port {port}): iptables current={current_iptables_bytes} bytes, baseline={baseline} bytes, usage={iptables_bytes} bytes ({iptables_bytes/(1024*1024):.2f} MB)")
-                total_bytes = iptables_bytes
-            except Exception as e:
-                logger.warning(f"Failed to get iptables bytes for GOST tunnel {tunnel_id}: {e}", exc_info=True)
-        else:
-            logger.debug(f"GOST tunnel {tunnel_id} not found in tunnel_ports - no tracking configured")
-        
-        return total_bytes / (1024 * 1024)
     
     def cleanup_all(self):
         """Stop all forwarding"""

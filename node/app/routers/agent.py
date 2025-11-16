@@ -20,11 +20,6 @@ class TunnelRemove(BaseModel):
     tunnel_id: str
 
 
-class UsagePush(BaseModel):
-    tunnel_id: str
-    bytes_used: int
-
-
 @router.post("/tunnels/apply")
 async def apply_tunnel(data: TunnelApply, request: Request):
     """Apply tunnel configuration"""
@@ -67,22 +62,6 @@ async def get_tunnel_status(tunnel_id: str, request: Request):
         return {"status": "success", "data": status}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
-
-
-@router.post("/usage/push")
-async def push_usage(data: UsagePush, request: Request):
-    """Push usage data to panel"""
-    adapter_manager = request.app.state.adapter_manager
-    
-    try:
-        adapter = adapter_manager.active_tunnels.get(data.tunnel_id)
-        if adapter:
-            usage_mb = adapter.get_usage_mb(data.tunnel_id)
-            data.bytes_used = int(usage_mb * 1024 * 1024)
-        
-        return {"status": "ok", "bytes_used": data.bytes_used}
-    except Exception as e:
-        return {"status": "error", "message": str(e)}
 
 
 @router.get("/status")

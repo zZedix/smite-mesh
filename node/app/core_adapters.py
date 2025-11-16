@@ -6,15 +6,51 @@ import psutil
 import time
 from pathlib import Path
 import shutil
-from .iptables_tracker import (
-    add_tracking_rule,
-    remove_tracking_rule,
-    get_traffic_bytes,
-    parse_address_port,
-    add_tracking_rule_for_remote,
-    remove_tracking_rule_for_remote,
-    get_traffic_bytes_for_remote
-)
+def parse_address_port(address_str: str):
+    """Parse address:port string, returns (host, port, is_ipv6)"""
+    import re
+    import ipaddress
+    
+    if not address_str:
+        return ("", None, False)
+    
+    address_str = address_str.strip()
+    
+    # Check for IPv6 address in brackets: [2001:db8::1]:8080
+    ipv6_bracket_match = re.match(r'^\[([^\]]+)\](?::(\d+))?$', address_str)
+    if ipv6_bracket_match:
+        host = ipv6_bracket_match.group(1)
+        port_str = ipv6_bracket_match.group(2)
+        port = int(port_str) if port_str else None
+        return (host, port, True)
+    
+    # Check if it's a bare IPv6 address
+    try:
+        ipaddress.IPv6Address(address_str)
+        return (address_str, None, True)
+    except (ValueError, ipaddress.AddressValueError):
+        pass
+    
+    # For IPv4 or hostname with port, split on last colon
+    if ":" in address_str:
+        parts = address_str.rsplit(":", 1)
+        if len(parts) == 2:
+            host_part = parts[0]
+            port_str = parts[1]
+            
+            # Check if host_part is actually an IPv6 address
+            try:
+                ipaddress.IPv6Address(host_part)
+                return (host_part, int(port_str), True)
+            except (ValueError, ipaddress.AddressValueError):
+                try:
+                    port = int(port_str)
+                    return (host_part, port, False)
+                except ValueError:
+                    return (address_str, None, False)
+    
+    # No port specified
+    return (address_str, None, False)
 
 
 class CoreAdapter(Protocol):
@@ -32,10 +68,6 @@ class CoreAdapter(Protocol):
     def status(self, tunnel_id: str) -> Dict[str, Any]:
         """Get tunnel status"""
         ...
-    
-    def get_usage_mb(self, tunnel_id: str) -> float:
-        """Get usage in MB"""
-        ...
 
 
 class RatholeAdapter:
@@ -46,9 +78,6 @@ class RatholeAdapter:
         self.config_dir = Path("/etc/smite-node/rathole")
         self.config_dir.mkdir(parents=True, exist_ok=True)
         self.processes = {}
-        self.usage_tracking = {}
-        self.tunnel_ports = {}  # Track ports for iptables tracking
-        self.iptables_baseline = {}  # Track baseline iptables counter when rule is added
     
     def apply(self, tunnel_id: str, spec: Dict[str, Any]):
         """Apply Rathole tunnel"""
@@ -72,31 +101,6 @@ local_addr = "{local_addr}"
         config_path = self.config_dir / f"{tunnel_id}.toml"
         with open(config_path, "w") as f:
             f.write(config)
-        
-        # Parse local_addr to get port for iptables tracking
-        host, port, is_ipv6 = parse_address_port(local_addr)
-        if port:
-            self.tunnel_ports[tunnel_id] = (port, is_ipv6)
-            # Add iptables tracking rule (only counts, doesn't block)
-            try:
-                # Always remove existing rule first to reset counter, then add fresh rule
-                # This ensures baseline starts at 0 for accurate tracking
-                try:
-                    remove_tracking_rule(tunnel_id, port, is_ipv6)
-                except:
-                    pass  # Rule might not exist, that's fine
-                
-                # Add fresh rule (counter will start at 0)
-                add_tracking_rule(tunnel_id, port, is_ipv6)
-                # Get baseline immediately after rule creation (should be 0)
-                baseline_bytes = get_traffic_bytes(tunnel_id, port, is_ipv6)
-                
-                self.iptables_baseline[tunnel_id] = baseline_bytes
-                import logging
-                logging.getLogger(__name__).info(f"Added iptables tracking for tunnel {tunnel_id} on port {port} (IPv6={is_ipv6}), baseline: {baseline_bytes} bytes")
-            except Exception as e:
-                import logging
-                logging.getLogger(__name__).error(f"Failed to add iptables tracking for tunnel {tunnel_id}: {e}", exc_info=True)
         
         try:
             proc = subprocess.Popen(
@@ -124,19 +128,6 @@ local_addr = "{local_addr}"
     def remove(self, tunnel_id: str):
         """Remove Rathole tunnel"""
         config_path = self.config_dir / f"{tunnel_id}.toml"
-        
-        # Remove iptables tracking rule
-        if tunnel_id in self.tunnel_ports:
-            port, is_ipv6 = self.tunnel_ports[tunnel_id]
-            try:
-                remove_tracking_rule(tunnel_id, port, is_ipv6)
-            except Exception as e:
-                import logging
-                logging.getLogger(__name__).warning(f"Failed to remove iptables tracking for tunnel {tunnel_id}: {e}")
-            del self.tunnel_ports[tunnel_id]
-            # Clean up baseline
-            if tunnel_id in self.iptables_baseline:
-                del self.iptables_baseline[tunnel_id]
         
         if tunnel_id in self.processes:
             proc = self.processes[tunnel_id]
@@ -172,32 +163,6 @@ local_addr = "{local_addr}"
             "config_exists": config_path.exists(),
             "process_running": is_running
         }
-    
-    def get_usage_mb(self, tunnel_id: str) -> float:
-        """Get usage in MB - tracks from iptables counters only (most accurate)"""
-        import logging
-        logger = logging.getLogger(__name__)
-        total_bytes = 0.0
-        
-        # Track from iptables counters (most accurate, works even with external proxies)
-        if tunnel_id in self.tunnel_ports:
-            port, is_ipv6 = self.tunnel_ports[tunnel_id]
-            try:
-                current_iptables_bytes = get_traffic_bytes(tunnel_id, port, is_ipv6)
-                # Get baseline (counter when rule was first added, should be 0)
-                baseline = self.iptables_baseline.get(tunnel_id, 0)
-                # Calculate actual usage as difference from baseline
-                iptables_bytes = max(0, current_iptables_bytes - baseline)
-                if iptables_bytes > 0:
-                    logger.info(f"Tunnel {tunnel_id} (port {port}): iptables current={current_iptables_bytes} bytes, baseline={baseline} bytes, usage={iptables_bytes} bytes ({iptables_bytes/(1024*1024):.2f} MB)")
-                total_bytes = iptables_bytes
-            except Exception as e:
-                logger.warning(f"Failed to get iptables bytes for tunnel {tunnel_id}: {e}", exc_info=True)
-        else:
-            logger.warning(f"Tunnel {tunnel_id} not found in tunnel_ports - no tracking configured")
-        
-        # Convert to MB and return directly (panel handles cumulative tracking)
-        return total_bytes / (1024 * 1024)
 
 
 class BackhaulAdapter:
@@ -240,10 +205,7 @@ class BackhaulAdapter:
         self.config_dir = Path(resolved_config)
         self.config_dir.mkdir(parents=True, exist_ok=True)
         self.processes: Dict[str, subprocess.Popen] = {}
-        self.usage_tracking: Dict[str, float] = {}
         self.log_handles: Dict[str, Any] = {}
-        self.tunnel_ports: Dict[str, tuple] = {}  # Track ports for iptables tracking
-        self.iptables_baseline: Dict[str, int] = {}  # Track baseline iptables counter when rule is added
         default_binary = binary_path or Path(
             os.environ.get("BACKHAUL_CLIENT_BINARY", "/usr/local/bin/backhaul")
         )
@@ -322,56 +284,9 @@ class BackhaulAdapter:
 
         self.processes[tunnel_id] = proc
         self.log_handles[tunnel_id] = log_fh
-        self.usage_tracking.setdefault(tunnel_id, 0.0)
-        
-        # Store remote address for iptables tracking (Backhaul is client, track by remote address)
-        if remote_addr:
-            # Parse remote_addr to extract host and port
-            host, port, is_ipv6 = parse_address_port(remote_addr)
-            import logging
-            logger = logging.getLogger(__name__)
-            logger.info(f"Backhaul tunnel {tunnel_id}: parsed remote_addr '{remote_addr}' -> host={host}, port={port}, is_ipv6={is_ipv6}")
-            
-            if host and port:
-                self.tunnel_ports[tunnel_id] = (host, port, is_ipv6, True)  # True = track by remote address
-                # Add iptables tracking rule for outbound connections to remote address
-                try:
-                    # Always remove existing rule first to reset counter, then add fresh rule
-                    # This ensures baseline starts at 0 for accurate tracking
-                    try:
-                        remove_tracking_rule_for_remote(tunnel_id, host, port, is_ipv6)
-                    except:
-                        pass  # Rule might not exist, that's fine
-                    
-                    # Add fresh rule (counter will start at 0)
-                    add_tracking_rule_for_remote(tunnel_id, host, port, is_ipv6)
-                    # Get baseline immediately after rule creation (should be 0)
-                    baseline_bytes = get_traffic_bytes_for_remote(tunnel_id, host, port, is_ipv6)
-                    
-                    self.iptables_baseline[tunnel_id] = baseline_bytes
-                    logger.info(f"Added iptables tracking for Backhaul tunnel {tunnel_id} to {host}:{port} (IPv6={is_ipv6}), baseline: {baseline_bytes} bytes")
-                except Exception as e:
-                    logger.error(f"Failed to add iptables tracking for Backhaul tunnel {tunnel_id}: {e}", exc_info=True)
-            else:
-                logger.warning(f"Backhaul tunnel {tunnel_id}: Could not parse remote_addr '{remote_addr}' - host={host}, port={port}. Traffic tracking will not work.")
 
     def remove(self, tunnel_id: str):
         config_path = self.config_dir / f"{tunnel_id}.toml"
-        
-        # Remove iptables tracking rule for remote address
-        if tunnel_id in self.tunnel_ports:
-            port_info = self.tunnel_ports[tunnel_id]
-            if len(port_info) == 4 and port_info[3]:  # Track by remote address
-                host, port, is_ipv6, _ = port_info
-                try:
-                    remove_tracking_rule_for_remote(tunnel_id, host, port, is_ipv6)
-                except Exception as e:
-                    import logging
-                    logging.getLogger(__name__).warning(f"Failed to remove iptables tracking for tunnel {tunnel_id}: {e}")
-            del self.tunnel_ports[tunnel_id]
-            # Clean up baseline
-            if tunnel_id in self.iptables_baseline:
-                del self.iptables_baseline[tunnel_id]
         
         if tunnel_id in self.processes:
             proc = self.processes[tunnel_id]
@@ -406,35 +321,6 @@ class BackhaulAdapter:
             "config_exists": config_path.exists(),
             "process_running": is_running,
         }
-
-    def get_usage_mb(self, tunnel_id: str) -> float:
-        """Get usage in MB - tracks from iptables counters only (by remote address)"""
-        import logging
-        logger = logging.getLogger(__name__)
-        total_bytes = 0.0
-        
-        # Track from iptables counters (by remote address)
-        if tunnel_id in self.tunnel_ports:
-            port_info = self.tunnel_ports[tunnel_id]
-            if len(port_info) == 4 and port_info[3]:  # Track by remote address
-                host, port, is_ipv6, _ = port_info
-                try:
-                    current_iptables_bytes = get_traffic_bytes_for_remote(tunnel_id, host, port, is_ipv6)
-                    # Get baseline (counter when rule was first added, should be 0)
-                    baseline = self.iptables_baseline.get(tunnel_id, 0)
-                    # Calculate actual usage as difference from baseline
-                    iptables_bytes = max(0, current_iptables_bytes - baseline)
-                    logger.debug(f"Backhaul tunnel {tunnel_id} ({host}:{port}): iptables current={current_iptables_bytes} bytes, baseline={baseline} bytes, usage={iptables_bytes} bytes ({iptables_bytes/(1024*1024):.2f} MB)")
-                    if iptables_bytes > 0:
-                        logger.info(f"Backhaul tunnel {tunnel_id} ({host}:{port}): usage={iptables_bytes} bytes ({iptables_bytes/(1024*1024):.2f} MB)")
-                    total_bytes = iptables_bytes
-                except Exception as e:
-                    logger.warning(f"Failed to get iptables bytes for Backhaul tunnel {tunnel_id}: {e}", exc_info=True)
-        else:
-            logger.debug(f"Backhaul tunnel {tunnel_id} not found in tunnel_ports - no tracking configured")
-        
-        # Convert to MB and return directly (panel handles cumulative tracking)
-        return total_bytes / (1024 * 1024)
 
     def _render_toml(self, data: Dict[str, Dict[str, Any]]) -> str:
         def format_value(value: Any) -> str:
@@ -474,6 +360,139 @@ class BackhaulAdapter:
         )
 
 
+class ChiselAdapter:
+    """Chisel reverse tunnel adapter"""
+    name = "chisel"
+    
+    def __init__(self):
+        self.config_dir = Path("/etc/smite-node/chisel")
+        self.config_dir.mkdir(parents=True, exist_ok=True)
+        self.processes = {}
+    
+    def _resolve_binary_path(self) -> Path:
+        """Resolve chisel binary path"""
+        # Check environment variable first
+        env_path = os.environ.get("CHISEL_BINARY")
+        if env_path:
+            resolved = Path(env_path)
+            if resolved.exists() and resolved.is_file():
+                return resolved
+        
+        # Check common locations
+        common_paths = [
+            Path("/usr/local/bin/chisel"),
+            Path("/usr/bin/chisel"),
+            Path("/opt/chisel/chisel"),
+        ]
+        
+        for path in common_paths:
+            if path.exists() and path.is_file():
+                return path
+        
+        # Check PATH
+        resolved = shutil.which("chisel")
+        if resolved:
+            return Path(resolved)
+        
+        raise FileNotFoundError(
+            "Chisel binary not found. Expected at CHISEL_BINARY, '/usr/local/bin/chisel', or in PATH."
+        )
+    
+    def apply(self, tunnel_id: str, spec: Dict[str, Any]):
+        """Apply Chisel tunnel"""
+        server_url = spec.get('server_url', '').strip()
+        local_addr = spec.get('local_addr', '127.0.0.1:8080')
+        remote_port = spec.get('remote_port') or spec.get('listen_port')
+        
+        if not server_url:
+            raise ValueError("Chisel requires 'server_url' (panel server address) in spec")
+        if not remote_port:
+            raise ValueError("Chisel requires 'remote_port' or 'listen_port' in spec")
+        
+        # Parse local_addr to get host and port
+        host, port, is_ipv6 = parse_address_port(local_addr)
+        if not port:
+            raise ValueError(f"Invalid local_addr format: {local_addr} (port required)")
+        
+        # Chisel reverse tunnel format: R:<remote_port>:<local_host>:<local_port>
+        # Example: R:8080:127.0.0.1:8080
+        reverse_spec = f"R:{remote_port}:{host}:{port}"
+        
+        # Build chisel client command
+        # chisel client <server_url> <reverse_spec>
+        binary_path = self._resolve_binary_path()
+        cmd = [
+            str(binary_path),
+            "client",
+            server_url,
+            reverse_spec
+        ]
+        
+        # Optional: Add authentication if provided
+        auth = spec.get('auth')
+        if auth:
+            cmd.extend(["--auth", auth])
+        
+        # Optional: Add fingerprint if provided
+        fingerprint = spec.get('fingerprint')
+        if fingerprint:
+            cmd.extend(["--fingerprint", fingerprint])
+        
+        # Start chisel client process
+        log_file = self.config_dir / f"{tunnel_id}.log"
+        try:
+            log_f = open(log_file, 'w', buffering=1)
+            proc = subprocess.Popen(
+                cmd,
+                stdout=log_f,
+                stderr=subprocess.STDOUT,
+                cwd=str(self.config_dir),
+                start_new_session=True
+            )
+            self.processes[tunnel_id] = proc
+            time.sleep(0.5)
+            if proc.poll() is not None:
+                stderr = ""
+                if log_file.exists():
+                    with open(log_file, 'r') as f:
+                        stderr = f.read()
+                raise RuntimeError(f"chisel failed to start: {stderr[-500:] if len(stderr) > 500 else stderr}")
+        except FileNotFoundError:
+            raise RuntimeError("chisel binary not found. Please install chisel.")
+    
+    def remove(self, tunnel_id: str):
+        """Remove Chisel tunnel"""
+        if tunnel_id in self.processes:
+            proc = self.processes[tunnel_id]
+            try:
+                proc.terminate()
+                proc.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                proc.kill()
+            except:
+                pass
+            del self.processes[tunnel_id]
+        
+        try:
+            subprocess.run(["pkill", "-f", f"chisel.*{tunnel_id}"], check=False, timeout=3)
+        except:
+            pass
+    
+    def status(self, tunnel_id: str) -> Dict[str, Any]:
+        """Get status"""
+        is_running = False
+        
+        if tunnel_id in self.processes:
+            proc = self.processes[tunnel_id]
+            is_running = proc.poll() is None
+        
+        return {
+            "active": is_running,
+            "type": "chisel",
+            "process_running": is_running
+        }
+
+
 class AdapterManager:
     """Manager for core adapters"""
     
@@ -481,9 +500,9 @@ class AdapterManager:
         self.adapters: Dict[str, CoreAdapter] = {
             "rathole": RatholeAdapter(),
             "backhaul": BackhaulAdapter(),
+            "chisel": ChiselAdapter(),
         }
         self.active_tunnels: Dict[str, CoreAdapter] = {}
-        self.usage_tracking: Dict[str, float] = {}
     
     def get_adapter(self, tunnel_core: str) -> Optional[CoreAdapter]:
         """Get adapter for tunnel core"""
@@ -504,8 +523,6 @@ class AdapterManager:
         logger.info(f"Using adapter: {adapter.name}")
         adapter.apply(tunnel_id, spec)
         self.active_tunnels[tunnel_id] = adapter
-        if tunnel_id not in self.usage_tracking:
-            self.usage_tracking[tunnel_id] = 0.0
         logger.info(f"Tunnel {tunnel_id} applied successfully")
     
     async def remove_tunnel(self, tunnel_id: str):
@@ -514,8 +531,6 @@ class AdapterManager:
             adapter = self.active_tunnels[tunnel_id]
             adapter.remove(tunnel_id)
             del self.active_tunnels[tunnel_id]
-        if tunnel_id in self.usage_tracking:
-            del self.usage_tracking[tunnel_id]
     
     async def get_tunnel_status(self, tunnel_id: str) -> Dict[str, Any]:
         """Get tunnel status"""

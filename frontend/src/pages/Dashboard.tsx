@@ -1,9 +1,7 @@
 import { useEffect, useState } from 'react'
-import { Server, Network, Cpu, MemoryStick, Plus, Activity as ActivityIcon, TrendingUp } from 'lucide-react'
+import { Server, Network, Cpu, MemoryStick, Plus, Activity as ActivityIcon } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
-import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
 import api from '../api/client'
-import { formatTraffic, formatTrafficRate } from '../utils/formatTraffic'
 
 interface Status {
   system: {
@@ -20,34 +18,17 @@ interface Status {
     total: number
     active: number
   }
-  traffic: {
-    total_mb: number
-    total_bytes: number
-    current_rate_mb_per_hour: number
-  }
-}
-
-
-interface TrafficDataPoint {
-  timestamp: string
-  bytes: number
-  mb: number
 }
 
 const Dashboard = () => {
   const [status, setStatus] = useState<Status | null>(null)
-  const [trafficData, setTrafficData] = useState<TrafficDataPoint[]>([])
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const [statusResponse, statsResponse] = await Promise.all([
-          api.get('/status'),
-          api.get('/usage/stats?hours=24')
-        ])
+        const statusResponse = await api.get('/status')
         setStatus(statusResponse.data)
-        setTrafficData(statsResponse.data.time_series || [])
       } catch (error) {
         console.error('Failed to fetch data:', error)
       } finally {
@@ -81,28 +62,6 @@ const Dashboard = () => {
         <p className="text-gray-500 dark:text-gray-400">Overview of your system status and resources</p>
       </div>
 
-      {/* Traffic Summary Box */}
-      {status?.traffic && (
-        <div className="mb-8 bg-gradient-to-r from-blue-600 to-indigo-600 dark:from-blue-700 dark:to-indigo-700 rounded-xl shadow-lg border border-blue-500 dark:border-blue-600 p-6">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-4">
-              <div className="p-3 bg-white/20 rounded-lg backdrop-blur-sm">
-                <TrendingUp className="w-8 h-8 text-white" />
-              </div>
-              <div>
-                <h2 className="text-sm font-medium text-blue-100 mb-1">Total Traffic</h2>
-                <p className="text-3xl font-bold text-white">
-                  {formatTraffic(status.traffic.total_mb)}
-                </p>
-                <p className="text-sm text-blue-100 mt-1">
-                  Current rate: {formatTrafficRate(status.traffic.current_rate_mb_per_hour)}
-                </p>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
       {/* Stats Grid */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
         <StatCard
@@ -134,58 +93,6 @@ const Dashboard = () => {
           color="orange"
         />
       </div>
-
-
-      {/* Traffic Chart */}
-      {trafficData.length > 0 && (
-        <div className="mb-8 bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-6 transition-shadow hover:shadow-md">
-          <div className="flex items-center gap-3 mb-6">
-            <div className="p-2 bg-blue-100 dark:bg-blue-900/30 rounded-lg">
-              <TrendingUp className="w-5 h-5 text-blue-600 dark:text-blue-400" />
-            </div>
-            <h2 className="text-xl font-semibold text-gray-900 dark:text-white">Traffic Chart</h2>
-          </div>
-          <ResponsiveContainer width="100%" height={300}>
-            <AreaChart data={trafficData.map((item, index) => ({ ...item, index }))}>
-              <defs>
-                <linearGradient id="colorTraffic" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.8}/>
-                  <stop offset="95%" stopColor="#3b82f6" stopOpacity={0}/>
-                </linearGradient>
-              </defs>
-              <CartesianGrid strokeDasharray="3 3" className="opacity-30" />
-              <XAxis 
-                dataKey="index" 
-                tick={{ fill: '#6b7280', fontSize: 12 }}
-                className="dark:text-gray-400"
-                hide
-              />
-              <YAxis 
-                tick={{ fill: '#6b7280', fontSize: 12 }}
-                className="dark:text-gray-400"
-                tickFormatter={(value) => formatTraffic(value)}
-              />
-              <Tooltip 
-                contentStyle={{ 
-                  backgroundColor: '#1f2937', 
-                  border: '1px solid #374151',
-                  borderRadius: '8px',
-                  color: '#fff'
-                }}
-                formatter={(value: number) => formatTraffic(value)}
-                labelFormatter={() => ''}
-              />
-              <Area 
-                type="monotone" 
-                dataKey="mb" 
-                stroke="#3b82f6" 
-                fillOpacity={1} 
-                fill="url(#colorTraffic)" 
-              />
-            </AreaChart>
-          </ResponsiveContainer>
-        </div>
-      )}
 
       {/* Bottom Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">

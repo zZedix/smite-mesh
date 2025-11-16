@@ -183,7 +183,12 @@ class BackhaulManager:
                 control_port = int(control_port)
             except (TypeError, ValueError):
                 control_port = 3080
-            bind_ip = spec.get("bind_ip", "0.0.0.0")
+            # Get IPv6 preference from spec
+            use_ipv6 = spec.get("use_ipv6", False)
+            if use_ipv6:
+                bind_ip = spec.get("bind_ip", "::")
+            else:
+                bind_ip = spec.get("bind_ip", "0.0.0.0")
             bind_addr = f"{bind_ip}:{control_port}"
 
         ports = self._build_ports(spec)

@@ -116,38 +116,3 @@ class Hysteria2Client:
         self.fingerprint = hashlib.sha256(fingerprint_data).hexdigest()[:16]
         print(f"Node fingerprint: {self.fingerprint}")
     
-    async def push_usage_to_panel(self, tunnel_id: str, node_id: str, bytes_used: int):
-        """Push usage data to panel"""
-        if not self.client or not self.node_id:
-            return False
-        
-        if "://" in self.panel_address:
-            protocol, rest = self.panel_address.split("://", 1)
-            if ":" in rest:
-                panel_host, _ = rest.split(":", 1)
-            else:
-                panel_host = rest
-        else:
-            if ":" in self.panel_address:
-                panel_host, _ = self.panel_address.split(":", 1)
-            else:
-                panel_host = self.panel_address
-        
-        panel_api_port = 8000
-        panel_api_url = f"http://{panel_host}:{panel_api_port}"
-        
-        try:
-            url = f"{panel_api_url}/api/usage/push"
-            response = await self.client.post(
-                url,
-                json={
-                    "tunnel_id": tunnel_id,
-                    "node_id": node_id or self.node_id,
-                    "bytes_used": bytes_used
-                },
-                timeout=10.0
-            )
-            return response.status_code in [200, 201]
-        except Exception as e:
-            print(f"Warning: Failed to push usage to panel: {e}")
-            return False
