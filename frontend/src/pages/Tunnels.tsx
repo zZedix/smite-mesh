@@ -695,6 +695,9 @@ const AddTunnelModal = ({ nodes, onClose, onSuccess }: AddTunnelModalProps) => {
         spec.server_port = listenPort  // Keep for backward compatibility
         const localHost = formData.use_ipv6 ? '::1' : '127.0.0.1'
         spec.local_addr = `${localHost}:${formData.rathole_local_port || '8080'}`
+        // Set panel host (same as Rathole uses window.location.hostname)
+        const panelHost = typeof window !== 'undefined' ? window.location.hostname : 'localhost'
+        spec.panel_host = panelHost
       }
       
       if (formData.core === 'backhaul') {

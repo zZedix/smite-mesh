@@ -124,9 +124,15 @@ class ChiselServerManager:
             
             try:
                 import socket
-                sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-                sock.settimeout(1)
-                result = sock.connect_ex(('127.0.0.1', server_port))
+                # Check port based on IPv6 preference
+                if use_ipv6:
+                    sock = socket.socket(socket.AF_INET6, socket.SOCK_STREAM)
+                    sock.settimeout(1)
+                    result = sock.connect_ex(('::1', server_port))
+                else:
+                    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                    sock.settimeout(1)
+                    result = sock.connect_ex(('127.0.0.1', server_port))
                 sock.close()
                 if result != 0:
                     logger.warning(f"Chisel server port {server_port} not listening after start, but process is running. PID: {proc.pid}")

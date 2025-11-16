@@ -249,13 +249,36 @@ async def create_tunnel(tunnel: TunnelCreate, request: Request, db: AsyncSession
                 listen_port = spec_for_node.get("listen_port") or spec_for_node.get("remote_port") or spec_for_node.get("server_port")
                 use_ipv6 = spec_for_node.get("use_ipv6", False)
                 if listen_port:
-                    # Get panel host from request
-                    panel_host = request.url.hostname
+                    # Get panel host - prioritize spec.panel_host (set by frontend), then node's view
+                    panel_host = spec_for_node.get("panel_host")
+                    
+                    # If not in spec, try node's panel_address from metadata
                     if not panel_host:
-                        # Fallback to node's view of panel (from node metadata)
-                        panel_host = node.node_metadata.get("panel_address", "localhost")
-                        if ":" in panel_host:
-                            panel_host = panel_host.split(":")[0]
+                        panel_address = node.node_metadata.get("panel_address", "")
+                        if panel_address:
+                            # Extract host from panel_address (could be "http://host:port" or "host:port" or just "host")
+                            if "://" in panel_address:
+                                # Remove protocol
+                                panel_address = panel_address.split("://", 1)[1]
+                            if ":" in panel_address:
+                                # Remove port
+                                panel_host = panel_address.split(":")[0]
+                            else:
+                                panel_host = panel_address
+                    
+                    # Fallback: request hostname (but might be localhost)
+                    if not panel_host or panel_host in ["localhost", "127.0.0.1", "::1"]:
+                        panel_host = request.url.hostname
+                        # Try X-Forwarded-Host header (if behind proxy)
+                        if not panel_host or panel_host in ["localhost", "127.0.0.1", "::1"]:
+                            forwarded_host = request.headers.get("X-Forwarded-Host")
+                            if forwarded_host:
+                                panel_host = forwarded_host.split(":")[0] if ":" in forwarded_host else forwarded_host
+                    
+                    # Final fallback with warning
+                    if not panel_host or panel_host in ["localhost", "127.0.0.1", "::1"]:
+                        logger.warning(f"Chisel tunnel {db_tunnel.id}: Could not determine panel host, using request hostname: {request.url.hostname}. Node may not be able to connect if this is localhost.")
+                        panel_host = request.url.hostname or "localhost"
                     
                     # Format host for IPv6 (needs brackets)
                     from app.utils import format_address_port
@@ -273,7 +296,7 @@ async def create_tunnel(tunnel: TunnelCreate, request: Request, db: AsyncSession
                     spec_for_node["server_url"] = server_url
                     # Set remote_port to listen_port for reverse tunnel (clients connect to this port)
                     spec_for_node["remote_port"] = int(listen_port)
-                    logger.info(f"Chisel tunnel {db_tunnel.id}: server_url={server_url}, listen_port={listen_port}, use_ipv6={use_ipv6}")
+                    logger.info(f"Chisel tunnel {db_tunnel.id}: server_url={server_url}, listen_port={listen_port}, use_ipv6={use_ipv6}, panel_host={panel_host}")
             
             logger.info(f"Applying tunnel {db_tunnel.id} to node {node.id}")
             response = await client.send_to_node(
