@@ -434,6 +434,7 @@ const EditTunnelModal = ({ tunnel, onClose, onSuccess }: EditTunnelModalProps) =
       return parsed.port?.toString() || ''
     })() : '',
     chisel_control_port: tunnel.spec?.control_port ? tunnel.spec.control_port.toString() : '',
+    node_ipv6: tunnel.spec?.node_ipv6 || '',
   })
   const parsedBackhaul = parseBackhaulSpec(tunnel.spec, tunnel.type)
   const [backhaulState, setBackhaulState] = useState<BackhaulFormState>(parsedBackhaul.state)
@@ -446,6 +447,9 @@ const EditTunnelModal = ({ tunnel, onClose, onSuccess }: EditTunnelModalProps) =
       // Build updated spec
       let updatedSpec = { ...tunnel.spec }
       
+      // Get v4 to v6 setting (use existing or default to false)
+      const useV4ToV6 = updatedSpec.use_ipv6 || false
+      
       if (tunnel.core === 'rathole') {
         if (formData.rathole_remote_addr) {
           const remoteHost = window.location.hostname
@@ -455,7 +459,16 @@ const EditTunnelModal = ({ tunnel, onClose, onSuccess }: EditTunnelModalProps) =
           updatedSpec.remote_addr = `${remoteHost}:${remotePort || '23333'}`
         }
         if (formData.rathole_local_port) {
-          updatedSpec.local_addr = `127.0.0.1:${formData.rathole_local_port}`
+          // Use IPv6 local address if v4 to v6 tunnel is enabled
+          // Use node IPv6 address if provided, otherwise default to ::1
+          const localHost = useV4ToV6 
+            ? (formData.node_ipv6 || '::1')
+            : '127.0.0.1'
+          updatedSpec.local_addr = `${localHost}:${formData.rathole_local_port}`
+        }
+        // Store node IPv6 address if provided
+        if (formData.node_ipv6) {
+          updatedSpec.node_ipv6 = formData.node_ipv6
         }
         // Proxy port (listen_port) is where clients connect to access the tunneled service
         const port = parseInt(formData.port.toString()) || parseInt(formData.rathole_local_port) || 8090
@@ -688,9 +701,54 @@ const EditTunnelModal = ({ tunnel, onClose, onSuccess }: EditTunnelModalProps) =
                   max="65535"
                   required
                 />
-                <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">Port on node where local service listens</p>
+                <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                  {tunnel.spec?.use_ipv6 
+                    ? `Port on node where local service listens (IPv6: [${tunnel.spec?.node_ipv6 || '::1'}]:${formData.rathole_local_port || '8080'})`
+                    : `Port on node where local service listens`}
+                </p>
               </div>
+              {/* Node IPv6 address field for Chisel when v4 to v6 is enabled */}
+              {tunnel.spec?.use_ipv6 && (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                    Node IPv6 Address (Optional)
+                  </label>
+                  <input
+                    type="text"
+                    value={formData.node_ipv6}
+                    onChange={(e) =>
+                      setFormData({ ...formData, node_ipv6: e.target.value })
+                    }
+                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg dark:bg-gray-700 dark:text-white"
+                    placeholder="::1 or 2001:db8::1"
+                  />
+                  <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                    IPv6 address of the node. Leave empty to use ::1 (localhost IPv6)
+                  </p>
+                </div>
+              )}
             </>
+          )}
+          
+          {/* Node IPv6 address field for Rathole when v4 to v6 is enabled */}
+          {tunnel.core === 'rathole' && tunnel.spec?.use_ipv6 && (
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                Node IPv6 Address (Optional)
+              </label>
+              <input
+                type="text"
+                value={formData.node_ipv6}
+                onChange={(e) =>
+                  setFormData({ ...formData, node_ipv6: e.target.value })
+                }
+                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg dark:bg-gray-700 dark:text-white"
+                placeholder="::1 or 2001:db8::1"
+              />
+              <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                IPv6 address of the node. Leave empty to use ::1 (localhost IPv6)
+              </p>
+            </div>
           )}
           
           <div className="flex gap-3 justify-end">
@@ -739,6 +797,7 @@ const AddTunnelModal = ({ nodes, onClose, onSuccess }: AddTunnelModalProps) => {
     rathole_local_port: '8080',
     chisel_control_port: '',  // Empty means auto (listen_port + 10000)
     use_ipv6: false,
+    node_ipv6: '',  // Optional IPv6 address for node (Rathole/Chisel)
     spec: {} as Record<string, any>,
   })
   const [backhaulState, setBackhaulState] = useState<BackhaulFormState>(createDefaultBackhaulState())
@@ -772,8 +831,11 @@ const AddTunnelModal = ({ nodes, onClose, onSuccess }: AddTunnelModalProps) => {
         const remotePort = formData.rathole_remote_addr || '23333'
         spec.remote_addr = `${remoteHost}:${remotePort}`
         spec.token = formData.rathole_token
-        // Use IPv6 local address if use_ipv6 is true
-        const localHost = formData.use_ipv6 ? '::1' : '127.0.0.1'
+        // Use IPv6 local address if v4 to v6 tunnel is enabled
+        // Use node IPv6 address if provided, otherwise default to ::1
+        const localHost = formData.use_ipv6 
+          ? (formData.node_ipv6 || '::1')
+          : '127.0.0.1'
         spec.local_addr = `${localHost}:${formData.rathole_local_port}`
         // Proxy port (listen_port) is where clients connect to access the tunneled service
         const port = parseInt(formData.port.toString()) || parseInt(formData.rathole_local_port) || 8090
@@ -795,7 +857,11 @@ const AddTunnelModal = ({ nodes, onClose, onSuccess }: AddTunnelModalProps) => {
         spec.control_port = controlPort
         // Local port on node where the service listens (default to same as listen_port if not specified)
         const localPort = parseInt(formData.rathole_local_port?.toString() || formData.port?.toString() || '8080')
-        const localHost = formData.use_ipv6 ? '::1' : '127.0.0.1'
+        // Use IPv6 local address if v4 to v6 tunnel is enabled
+        // Use node IPv6 address if provided, otherwise default to ::1
+        const localHost = formData.use_ipv6 
+          ? (formData.node_ipv6 || '::1')
+          : '127.0.0.1'
         spec.local_addr = `${localHost}:${localPort}`
         // Set panel host (same as Rathole uses window.location.hostname)
         const panelHost = typeof window !== 'undefined' ? window.location.hostname : 'localhost'
@@ -1167,21 +1233,26 @@ const AddTunnelModal = ({ nodes, onClose, onSuccess }: AddTunnelModalProps) => {
             </>
           )}
           
-          <div className="flex items-center gap-2">
-            <input
-              type="checkbox"
-              id="use_ipv6"
-              checked={formData.use_ipv6}
-              onChange={(e) => setFormData({ ...formData, use_ipv6: e.target.checked })}
-              className="w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 rounded focus:ring-blue-500 dark:focus:ring-blue-600 dark:ring-offset-gray-800 focus:ring-2 dark:bg-gray-700 dark:border-gray-600"
-            />
-            <label htmlFor="use_ipv6" className="text-sm font-medium text-gray-700 dark:text-gray-300">
-              Use IPv6 (instead of IPv4)
-            </label>
-          </div>
-          <p className="text-xs text-gray-500 dark:text-gray-400 -mt-2">
-            Enable this to use IPv6 addresses for listening and connections. Supports IPv4→IPv6, IPv6→IPv4, and IPv6→IPv6 tunneling.
-          </p>
+          {/* v4 to v6 tunnel checkbox - only for Rathole, Backhaul, Chisel (not GOST) */}
+          {formData.core !== 'xray' && (
+            <>
+              <div className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  id="v4_to_v6"
+                  checked={formData.use_ipv6}
+                  onChange={(e) => setFormData({ ...formData, use_ipv6: e.target.checked })}
+                  className="w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 rounded focus:ring-blue-500 dark:focus:ring-blue-600 dark:ring-offset-gray-800 focus:ring-2 dark:bg-gray-700 dark:border-gray-600"
+                />
+                <label htmlFor="v4_to_v6" className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                  v4 to v6 tunnel
+                </label>
+              </div>
+              <p className="text-xs text-gray-500 dark:text-gray-400 -mt-2">
+                Enable this to create a tunnel from IPv4 (panel) to IPv6 (node/target). Panel listens on IPv4, target uses IPv6.
+              </p>
+            </>
+          )}
 
           <div className="flex gap-3 justify-end">
             <button

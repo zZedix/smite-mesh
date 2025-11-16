@@ -41,10 +41,9 @@ class ChiselServerManager:
             
             # Build chisel server command
             # chisel server --host <ip> --port <port> --reverse
-            if use_ipv6:
-                host = "::"
-            else:
-                host = "0.0.0.0"
+            # Panel always listens on IPv4 for v4 to v6 tunnels
+            # use_ipv6 flag means: panel listens on IPv4, but target/node uses IPv6
+            host = "0.0.0.0"
             
             cmd = [
                 "/usr/local/bin/chisel",
@@ -130,14 +129,10 @@ class ChiselServerManager:
                 port_listening = False
                 for attempt in range(max_retries):
                     time.sleep(0.5)  # Give it time to bind
-                    if use_ipv6:
-                        sock = socket.socket(socket.AF_INET6, socket.SOCK_STREAM)
-                        sock.settimeout(1)
-                        result = sock.connect_ex(('::1', server_port))
-                    else:
-                        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-                        sock.settimeout(1)
-                        result = sock.connect_ex(('127.0.0.1', server_port))
+                    # Always check IPv4 since panel listens on 0.0.0.0
+                    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                    sock.settimeout(1)
+                    result = sock.connect_ex(('127.0.0.1', server_port))
                     sock.close()
                     if result == 0:
                         port_listening = True

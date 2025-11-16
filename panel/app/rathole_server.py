@@ -39,13 +39,10 @@ class RatholeServerManager:
             if port is None:
                 raise ValueError(f"Invalid remote_addr format: {remote_addr} (port required)")
             
-            # Rathole bind_addr format: "0.0.0.0:port" for IPv4 or "[::]:port" for IPv6
-            if use_ipv6:
-                bind_addr = f"[::]:{port}"
-                proxy_bind_addr = f"[::]:{proxy_port}"
-            else:
-                bind_addr = f"0.0.0.0:{port}"
-                proxy_bind_addr = f"0.0.0.0:{proxy_port}"
+            # Rathole bind_addr format: Panel always listens on IPv4 for v4 to v6 tunnels
+            # use_ipv6 flag means: panel listens on IPv4, but target/node uses IPv6
+            bind_addr = f"0.0.0.0:{port}"
+            proxy_bind_addr = f"0.0.0.0:{proxy_port}"
             
             if tunnel_id in self.active_servers:
                 logger.warning(f"Rathole server for tunnel {tunnel_id} already exists, stopping it first")
@@ -129,16 +126,12 @@ bind_addr = "{proxy_bind_addr}"
             try:
                 import socket
                 # Extract port from bind_addr
-                _, port, is_ipv6_check = parse_address_port(bind_addr)
+                _, port, _ = parse_address_port(bind_addr)
                 if port:
-                    if use_ipv6:
-                        sock = socket.socket(socket.AF_INET6, socket.SOCK_STREAM)
-                        sock.settimeout(1)
-                        result = sock.connect_ex(('::1', port))
-                    else:
-                        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-                        sock.settimeout(1)
-                        result = sock.connect_ex(('127.0.0.1', port))
+                    # Always check IPv4 since panel listens on 0.0.0.0
+                    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                    sock.settimeout(1)
+                    result = sock.connect_ex(('127.0.0.1', port))
                     sock.close()
                     if result != 0:
                         logger.warning(f"Rathole server port {port} not listening after start, but process is running. PID: {proc.pid}")
