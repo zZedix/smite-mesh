@@ -43,6 +43,7 @@ services:
       - SMITE_HTTP_PORT=${SMITE_HTTP_PORT:-80}
       - SMITE_HTTPS_PORT=${SMITE_HTTPS_PORT:-443}
       - SMITE_SSL_DOMAIN=${SMITE_SSL_DOMAIN:-REPLACE_DOMAIN}
+      - PANEL_PORT=${PANEL_PORT:-8000}
     depends_on:
       - smite-panel
     restart: unless-stopped

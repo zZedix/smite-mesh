@@ -62,7 +62,7 @@ class Hysteria2Client:
                 panel_host = self.panel_address
                 panel_hysteria_port = "443"
         
-        panel_api_port = 8000
+        panel_api_port = settings.panel_api_port
         
         panel_api_url = f"http://{panel_host}:{panel_api_port}"
         

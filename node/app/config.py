@@ -9,6 +9,7 @@ class Settings(BaseSettings):
     
     panel_ca_path: str = "/etc/smite-node/ca.crt"
     panel_address: str = "panel.example.com:443"
+    panel_api_port: int = 8000
     
     class Config:
         env_file = ".env"

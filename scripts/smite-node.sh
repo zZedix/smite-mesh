@@ -73,6 +73,9 @@ if [ -z "$PANEL_ADDRESS" ]; then
     exit 1
 fi
 
+read -p "Panel port (should match the panel's port from panel installation, default: 8000): " PANEL_API_PORT
+PANEL_API_PORT=${PANEL_API_PORT:-8000}
+
 read -p "Node API port (default: 8888): " NODE_API_PORT
 NODE_API_PORT=${NODE_API_PORT:-8888}
 
@@ -95,6 +98,7 @@ NODE_NAME=$NODE_NAME
 
 PANEL_CA_PATH=/etc/smite-node/certs/ca.crt
 PANEL_ADDRESS=$PANEL_ADDRESS
+PANEL_API_PORT=$PANEL_API_PORT
 EOF
 
 # Clone/update node files from GitHub
