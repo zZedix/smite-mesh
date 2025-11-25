@@ -641,24 +641,67 @@ remotePort = {remote_port}
                     raise ValueError(f"Config file does not contain expected server_addr '{server_addr}'")
         
         binary_path = self._resolve_binary_path()
+        
+        # Use absolute path for config file
+        config_file_abs = config_file.resolve()
+        logger.info(f"FRP using config file: {config_file_abs}")
+        
+        # Verify config file exists and is readable
+        if not config_file_abs.exists():
+            raise FileNotFoundError(f"FRP config file does not exist: {config_file_abs}")
+        if not os.access(config_file_abs, os.R_OK):
+            raise PermissionError(f"FRP config file is not readable: {config_file_abs}")
+        
+        # Read and log the actual file content one more time before starting
+        with open(config_file_abs, 'r') as f:
+            final_content = f.read()
+            logger.info(f"FRP config file final content before starting:\n{final_content}")
+            if '0.0.0.0' in final_content and server_addr != '0.0.0.0':
+                raise ValueError(f"Config file contains 0.0.0.0 unexpectedly: {final_content}")
+        
         cmd = [
             str(binary_path),
-            "-c", str(config_file)
+            "-c", str(config_file_abs)
         ]
+        
+        logger.info(f"FRP command: {' '.join(cmd)}")
+        logger.info(f"FRP working directory: {self.config_dir}")
+        
+        # Try to validate config with FRP (if it supports --validate or similar)
+        # Some FRP versions support config validation
+        try:
+            validate_cmd = [str(binary_path), "-c", str(config_file_abs), "--check"]
+            validate_result = subprocess.run(
+                validate_cmd,
+                capture_output=True,
+                text=True,
+                timeout=5,
+                cwd=str(self.config_dir)
+            )
+            if validate_result.returncode == 0:
+                logger.info(f"FRP config validation passed")
+            else:
+                logger.warning(f"FRP config validation returned code {validate_result.returncode}: {validate_result.stderr}")
+        except (subprocess.TimeoutExpired, FileNotFoundError, subprocess.SubprocessError) as e:
+            # FRP might not support --check, that's okay
+            logger.debug(f"FRP config validation not available or failed: {e}")
         
         log_file = self.config_dir / f"{tunnel_id}.log"
         log_f = open(log_file, 'w', buffering=1)
         try:
             log_f.write(f"Starting FRP client for tunnel {tunnel_id}\n")
             log_f.write(f"Command: {' '.join(cmd)}\n")
-            log_f.write(f"Config: type={tunnel_type}, local={local_ip}:{local_port}, remote={remote_port}\n")
+            log_f.write(f"Config file: {config_file_abs}\n")
+            log_f.write(f"Config file exists: {config_file_abs.exists()}\n")
+            log_f.write(f"Config: type={tunnel_type}, local={local_ip}:{local_port}, remote={remote_port}, server={server_addr}:{server_port}\n")
             log_f.flush()
             proc = subprocess.Popen(
                 cmd,
                 stdout=log_f,
                 stderr=subprocess.STDOUT,
                 cwd=str(self.config_dir),
-                start_new_session=True
+                start_new_session=True,
+                env=os.environ.copy()  # Ensure no env vars override config
             )
             self.log_handles[tunnel_id] = log_f
             self.processes[tunnel_id] = proc
