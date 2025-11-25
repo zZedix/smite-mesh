@@ -159,6 +159,7 @@ SMITE_HTTP_PORT=${SMITE_HTTP_PORT}
 SMITE_HTTPS_PORT=${SMITE_HTTPS_PORT}
 SMITE_SSL_DOMAIN=${DOMAIN}
 DOCS_ENABLED=true
+SMITE_VERSION=${SMITE_VERSION:-latest}
 
 DB_TYPE=$DB_TYPE
 DB_PATH=./data/smite.db
@@ -315,7 +316,9 @@ echo "Pulling Docker images from GitHub Container Registry..."
 echo "  Using Docker BuildKit for faster builds..."
 
 # Set version (default to latest, can be overridden with SMITE_VERSION env var)
-export SMITE_VERSION=${SMITE_VERSION:-latest}
+if [ -z "${SMITE_VERSION}" ]; then
+    export SMITE_VERSION=latest
+fi
 
 # Try to pull prebuilt images first (will fallback to build if not available)
 echo "  Pulling prebuilt images from GHCR..."

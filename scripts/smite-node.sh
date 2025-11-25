@@ -95,6 +95,7 @@ echo "✅ CA certificate saved to certs/ca.crt"
 cat > .env << EOF
 NODE_API_PORT=$NODE_API_PORT
 NODE_NAME=$NODE_NAME
+SMITE_VERSION=${SMITE_VERSION:-latest}
 
 PANEL_CA_PATH=/etc/smite-node/certs/ca.crt
 PANEL_ADDRESS=$PANEL_ADDRESS
@@ -227,7 +228,9 @@ fi
 # Pull or build Docker image
 echo ""
 echo "Pulling Docker image from GitHub Container Registry..."
-export SMITE_VERSION=${SMITE_VERSION:-latest}
+if [ -z "${SMITE_VERSION}" ]; then
+    export SMITE_VERSION=latest
+fi
 
 if docker pull ghcr.io/zzedix/smite-node:${SMITE_VERSION} 2>/dev/null; then
     echo "✅ Node image pulled from GHCR"
