@@ -1039,11 +1039,14 @@ const AddTunnelModal = ({ nodes, onClose, onSuccess }: AddTunnelModalProps) => {
 
   const handleCoreChange = (core: string) => {
     let newType = formData.type
-    if (core === 'rathole' || core === 'chisel' || core === 'frp') {
-      newType = core === 'frp' ? 'tcp' : core
+    if (core === 'rathole' || core === 'chisel') {
+      newType = core
+    } else if (core === 'frp') {
+      // Keep current type if it's tcp or udp, otherwise default to tcp
+      newType = (formData.type === 'tcp' || formData.type === 'udp') ? formData.type : 'tcp'
     } else if (core === 'backhaul') {
       newType = backhaulState.transport
-    } else if (formData.type === 'rathole' || formData.type === 'chisel' || formData.core === 'backhaul' || formData.core === 'frp') {
+    } else if (formData.type === 'rathole' || formData.type === 'chisel' || formData.core === 'backhaul') {
       newType = 'tcp'
     }
     setFormData({ ...formData, core, type: newType })
@@ -1128,7 +1131,7 @@ const AddTunnelModal = ({ nodes, onClose, onSuccess }: AddTunnelModalProps) => {
                   }
                 }}
                 className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg dark:bg-gray-700 dark:text-white"
-                disabled={formData.core === 'rathole' || formData.core === 'chisel' || formData.core === 'frp'}
+                disabled={formData.core === 'rathole' || formData.core === 'chisel'}
               >
                 {formData.core === 'rathole' || formData.core === 'chisel' ? (
                   <option value={formData.core}>{formData.core.charAt(0).toUpperCase() + formData.core.slice(1)}</option>
