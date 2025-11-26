@@ -7,7 +7,7 @@
     <img src="assets/SmiteL.png" alt="Smite Logo" width="200"/>
   </picture>
   
-  **Modern tunnel management built on GOST, Backhaul, Rathole, and Chisel, featuring an intuitive WebUI, fast CLI, and open-source freedom.**
+  **Modern tunnel management built on GOST, Backhaul, Rathole, Chisel, and FRP, featuring an intuitive WebUI, fast CLI, and open-source freedom.**
   
   [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
   [![Python](https://img.shields.io/badge/Python-3.11+-blue.svg)](https://www.python.org/)
@@ -23,11 +23,11 @@
 
 ## 🚀 Features
 
-- **Multiple Tunnel Types**: Support for TCP, UDP, gRPC, TCPMux, Backhaul, Rathole, and Chisel
+- **Multiple Tunnel Types**: Support for TCP, UDP, gRPC, TCPMux, Backhaul, Rathole, Chisel, and FRP
 - **Docker-First**: Easy deployment with Docker Compose
 - **Web UI**: Modern, intuitive web interface for tunnel management
 - **CLI Tools**: Powerful command-line tools for management
-- **Node Support**: Easy reverse tunnel setup with Backhaul, Rathole, and Chisel nodes
+- **Node Support**: Easy reverse tunnel setup with Backhaul, Rathole, Chisel, and FRP nodes
 - **GOST Forwarding**: Direct forwarding without nodes for better performance
 
 ---
@@ -86,7 +86,7 @@ smite admin create
 
 ## 🖥️ Node Installation
 
-> **Note**: Nodes are used for **Backhaul**, **Rathole**, and **Chisel** tunnels, providing easy reverse tunnel functionality. For GOST tunnels (TCP, UDP, gRPC, TCPMux), you can forward directly without a node.
+> **Note**: Nodes are used for **Backhaul**, **Rathole**, **Chisel**, and **FRP** tunnels, providing easy reverse tunnel functionality. For GOST tunnels (TCP, UDP, gRPC, TCPMux), you can forward directly without a node.
 
 ### Quick Install
 
@@ -194,6 +194,9 @@ Rathole tunnels require a node and provide easy reverse tunnel functionality. Th
 
 ### Chisel Tunnels (Reverse Tunnel)
 Chisel tunnels require a node and provide fast TCP/UDP reverse tunnel functionality. Similar to Rathole, the node connects to the panel's Chisel server, enabling you to expose services running on the node's network through the panel with high performance.
+
+### FRP Tunnels (Reverse Tunnel)
+FRP (Fast Reverse Proxy) tunnels require a node and provide reliable TCP/UDP reverse tunnel functionality. The panel manages the FRP server automatically, and the node runs the FRP client to establish the reverse tunnel connection. FRP supports both TCP and UDP protocols, with optional IPv6 support for tunneling IPv6 traffic over IPv4 networks.
 
 ---
 

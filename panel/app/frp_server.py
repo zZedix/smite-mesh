@@ -60,7 +60,6 @@ class FrpServerManager:
                 logger.warning(f"FRP server for tunnel {tunnel_id} already exists, stopping it first")
                 self.stop_server(tunnel_id)
             
-            # Create config file - Use YAML format as TOML seems to have issues with FRP v0.65.0
             config_file = self.config_dir / f"frps_{tunnel_id}.yaml"
             config_content = f"""bindPort: {bind_port}
 """
@@ -69,12 +68,9 @@ class FrpServerManager:
   method: token
   token: "{token}"
 """
-            # Note: webServer section removed as FRP v0.65.0 doesn't support it in YAML format
-            # Dashboard is disabled by default when not specified
             with open(config_file, 'w') as f:
                 f.write(config_content)
             
-            # Log config content for debugging
             logger.info(f"FRP server config file {config_file} content:\n{config_content}")
             
             binary_path = self._resolve_binary_path()

@@ -146,8 +146,8 @@ if [ "$USE_DOMAIN" = "y" ] || [ "$USE_DOMAIN" = "Y" ]; then
     fi
 fi
 
-read -p "Database type [sqlite/mysql] (default: sqlite): " DB_TYPE
-DB_TYPE=${DB_TYPE:-sqlite}
+# Database type is always SQLite
+DB_TYPE=sqlite
 
 # Create .env file
 cat > .env << EOF
@@ -170,26 +170,6 @@ HYSTERIA2_KEY_PATH=./certs/ca.key
 
 SECRET_KEY=$(openssl rand -hex 32)
 EOF
-
-if [ "$DB_TYPE" = "mysql" ]; then
-    read -p "MySQL host (default: localhost): " DB_HOST
-    DB_HOST=${DB_HOST:-localhost}
-    read -p "MySQL port (default: 3306): " DB_PORT
-    DB_PORT=${DB_PORT:-3306}
-    read -p "MySQL database name: " DB_NAME
-    read -p "MySQL user: " DB_USER
-    read -sp "MySQL password: " DB_PASSWORD
-    echo ""
-    
-    cat >> .env << EOF
-
-DB_HOST=$DB_HOST
-DB_PORT=$DB_PORT
-DB_NAME=$DB_NAME
-DB_USER=$DB_USER
-DB_PASSWORD=$DB_PASSWORD
-EOF
-fi
 
 progress "Configuration saved"
 

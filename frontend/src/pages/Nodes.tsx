@@ -56,7 +56,6 @@ const Nodes = () => {
     setShowCertModal(true)
     setCertLoading(true)
     try {
-      // Use axios instance to include auth headers
       const response = await api.get('/panel/ca', {
         responseType: 'text',
         headers: {
@@ -379,15 +378,38 @@ const CertModal = ({ certContent, loading, onClose, onCopy, copied }: CertModalP
             <div className="flex justify-end gap-3 mt-4">
               <button
                 type="button"
-                onClick={(e) => {
+                onClick={async (e) => {
                   e.preventDefault()
                   e.stopPropagation()
-                  onCopy()
+                  try {
+                    if (certContent && certContent.trim().length > 0) {
+                      await navigator.clipboard.writeText(certContent)
+                      onCopy()
+                    } else {
+                      alert('Certificate content is empty. Please wait for it to load.')
+                    }
+                  } catch (error) {
+                    console.error('Failed to copy:', error)
+                    const textarea = e.currentTarget.closest('.bg-white, .dark\\:bg-gray-800')?.querySelector('textarea')
+                    if (textarea) {
+                      textarea.select()
+                      textarea.setSelectionRange(0, 99999)
+                      try {
+                        document.execCommand('copy')
+                        onCopy()
+                      } catch (err) {
+                        alert('Failed to copy to clipboard. Please select and copy manually from the text area above.')
+                      }
+                    } else {
+                      alert('Failed to copy to clipboard. Please select and copy manually from the text area above.')
+                    }
+                  }
                 }}
+                disabled={loading || !certContent || certContent.trim().length === 0}
                 className={`px-4 py-2 rounded-lg transition-colors flex items-center gap-2 ${
                   copied
                     ? 'bg-green-600 text-white'
-                    : 'bg-blue-600 text-white hover:bg-blue-700'
+                    : 'bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed'
                 }`}
               >
                 <Copy size={16} />

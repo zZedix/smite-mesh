@@ -12,7 +12,7 @@ class Settings(BaseSettings):
     https_key_path: str = "./certs/server.key"
     docs_enabled: bool = True
     
-    db_type: Literal["sqlite", "mysql"] = "sqlite"
+    db_type: Literal["sqlite"] = "sqlite"
     db_path: str = "./data/smite.db"
     db_host: str = "localhost"
     db_port: int = 3306

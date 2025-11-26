@@ -19,7 +19,6 @@ async def get_version():
     import os
     from pathlib import Path
     
-    # First, try to read from version file (written during Docker build with actual version)
     version_file = Path("/app/VERSION")
     if version_file.exists():
         try:
@@ -29,21 +28,17 @@ async def get_version():
         except:
             pass
     
-    # If VERSION file has "next" or "latest", try to get actual version from Docker label
     smite_version = os.getenv("SMITE_VERSION", "")
     if smite_version in ["next", "latest"]:
-        # Try to get from Docker image label via docker inspect (if available)
         try:
             import subprocess
             import json
-            # Get container ID from cgroup
             cgroup_path = Path("/proc/self/cgroup")
             if cgroup_path.exists():
                 with open(cgroup_path) as f:
                     for line in f:
                         if "docker" in line or "containerd" in line:
                             container_id = line.split("/")[-1].strip()
-                            # Try docker inspect
                             result = subprocess.run(
                                 ["docker", "inspect", container_id],
                                 capture_output=True,
@@ -61,7 +56,6 @@ async def get_version():
         except:
             pass
         
-        # Fallback to showing "next" or "latest"
         return {"version": smite_version}
     
     if smite_version:

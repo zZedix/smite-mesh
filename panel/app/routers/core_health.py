@@ -70,7 +70,6 @@ async def get_core_health(request: Request, db: AsyncSession = Depends(get_db)):
                 manager = getattr(request.app.state, "rathole_server_manager", None)
                 if manager:
                     if len(active_tunnels) > 0:
-                        # Check if each tunnel has a running server
                         tunnel_ids = {t.id for t in active_tunnels}
                         all_healthy = True
                         error_message = None
@@ -312,7 +311,6 @@ async def _reset_core(core: str, app_or_request, db: AsyncSession):
         if manager:
             for tunnel in active_tunnels:
                 try:
-                    # Chisel server uses control_port (listen_port + 10000) or the control_port from spec
                     listen_port = tunnel.spec.get("listen_port") or tunnel.spec.get("remote_port")
                     server_port = tunnel.spec.get("control_port")
                     if not server_port and listen_port:
@@ -439,11 +437,8 @@ async def _reset_core(core: str, app_or_request, db: AsyncSession):
                         logger.warning(f"Chisel tunnel {tunnel.id}: Missing listen_port, skipping reset")
                         continue
                 elif core == "frp":
-                    # Use prepare_frp_spec_for_node to get correct server_addr
                     from app.routers.tunnels import prepare_frp_spec_for_node
                     from fastapi import Request
-                    # Create a minimal request object for prepare_frp_spec_for_node
-                    # We'll use node metadata to get panel address
                     spec_for_node = tunnel.spec.copy()
                     panel_address = node.node_metadata.get("panel_address", "")
                     if panel_address:
@@ -464,7 +459,6 @@ async def _reset_core(core: str, app_or_request, db: AsyncSession):
                         spec_for_node["server_addr"] = server_addr
                         spec_for_node["server_port"] = int(bind_port)
                     else:
-                        # Fallback
                         import os
                         panel_public_ip = os.getenv("PANEL_PUBLIC_IP") or os.getenv("PANEL_IP")
                         if panel_public_ip and panel_public_ip not in ["localhost", "127.0.0.1", "::1", "0.0.0.0", ""]:

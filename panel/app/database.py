@@ -8,8 +8,6 @@ Base = declarative_base()
 
 if settings.db_type == "sqlite":
     db_url = f"sqlite+aiosqlite:///{settings.db_path}"
-elif settings.db_type == "mysql":
-    db_url = f"mysql+aiomysql://{settings.db_user}:{settings.db_password}@{settings.db_host}:{settings.db_port}/{settings.db_name}"
 else:
     raise ValueError(f"Unsupported DB type: {settings.db_type}")
 

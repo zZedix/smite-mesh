@@ -11,6 +11,8 @@ const Logs = () => {
   const [logs, setLogs] = useState<LogEntry[]>([])
   const [loading, setLoading] = useState(true)
   const logEndRef = useRef<HTMLDivElement>(null)
+  const logContainerRef = useRef<HTMLDivElement>(null)
+  const [shouldAutoScroll, setShouldAutoScroll] = useState(true)
 
   useEffect(() => {
     fetchLogs()
@@ -19,8 +21,24 @@ const Logs = () => {
   }, [])
 
   useEffect(() => {
-    logEndRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [logs])
+    if (shouldAutoScroll && logEndRef.current) {
+      logEndRef.current.scrollIntoView({ behavior: 'smooth' })
+    }
+  }, [logs, shouldAutoScroll])
+
+  useEffect(() => {
+    const container = logContainerRef.current
+    if (!container) return
+
+    const handleScroll = () => {
+      const { scrollTop, scrollHeight, clientHeight } = container
+      const isNearBottom = scrollHeight - scrollTop - clientHeight < 100
+      setShouldAutoScroll(isNearBottom)
+    }
+
+    container.addEventListener('scroll', handleScroll)
+    return () => container.removeEventListener('scroll', handleScroll)
+  }, [])
 
   const fetchLogs = async () => {
     try {
@@ -77,7 +95,11 @@ const Logs = () => {
         <p className="text-gray-500 dark:text-gray-400">View system and application logs</p>
       </div>
 
-      <div className="bg-gray-900 dark:bg-black rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm p-6 font-mono text-sm overflow-auto" style={{ maxHeight: '70vh' }}>
+      <div 
+        ref={logContainerRef}
+        className="bg-gray-900 dark:bg-black rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm p-6 font-mono text-sm overflow-auto" 
+        style={{ maxHeight: '70vh' }}
+      >
         {logs.length === 0 ? (
           <div className="text-center py-12 text-gray-400">No logs available</div>
         ) : (

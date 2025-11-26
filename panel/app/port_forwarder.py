@@ -22,13 +22,11 @@ class PortForwarder:
                 logger.warning(f"Port {local_port} already being forwarded, stopping old forward")
                 await self.stop_forward(local_port)
             
-            # Store config
             self.forward_configs[local_port] = {
                 "node_address": node_address,
                 "remote_port": remote_port
             }
             
-            # Start forwarding task
             task = asyncio.create_task(self._forward_loop(local_port, node_address, remote_port))
             self.active_forwards[local_port] = task
             
@@ -95,24 +93,20 @@ class PortForwarder:
         remote_writer = None
         
         try:
-            # Connect to target node with longer timeout and keep-alive
             try:
-                # Create socket with keep-alive
                 sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
                 sock.setsockopt(socket.SOL_SOCKET, socket.SO_KEEPALIVE, 1)
                 sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_KEEPIDLE, 60)
                 sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_KEEPINTVL, 10)
                 sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_KEEPCNT, 3)
-                sock.setblocking(False)  # Set non-blocking for asyncio
+                sock.setblocking(False)
                 
-                # Connect socket asynchronously
                 loop = asyncio.get_event_loop()
                 await asyncio.wait_for(
                     loop.sock_connect(sock, (target_host, target_port)),
                     timeout=10.0
                 )
                 
-                # Now use the connected socket for asyncio stream
                 remote_reader, remote_writer = await asyncio.open_connection(sock=sock)
             except asyncio.TimeoutError:
                 logger.warning(f"Timeout connecting to {target_host}:{target_port}")
@@ -144,7 +138,6 @@ class PortForwarder:
                             try:
                                 if dst_writer.is_closing():
                                     break
-                                # Try a small keep-alive packet
                                 await asyncio.wait_for(dst_writer.drain(), timeout=1.0)
                             except:
                                 break
@@ -161,17 +154,14 @@ class PortForwarder:
                     except:
                         pass
             
-            # Start bidirectional forwarding
             await asyncio.gather(
                 forward(reader, remote_writer, "client->node"),
                 forward(remote_reader, writer, "node->client"),
                 return_exceptions=True
             )
-            
         except Exception as e:
             logger.debug(f"Error handling client connection: {e}")
         finally:
-            # Cleanup
             try:
                 writer.close()
                 await writer.wait_closed()
