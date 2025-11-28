@@ -9,6 +9,7 @@ RUN apt-get update && apt-get install -y \
     unzip \
     gzip \
     ca-certificates \
+    git \
     && rm -rf /var/lib/apt/lists/*
 
 FROM base AS binaries
@@ -121,6 +122,9 @@ COPY --from=backhaul-bin /opt/backhaul/backhaul /usr/local/bin/backhaul
 COPY --from=deps /usr/local /usr/local
 COPY --from=frontend-build /app/dist ./static
 COPY panel .
+# Copy .git directory if it exists (for git tag extraction at runtime)
+# Note: This may fail if .git is in .dockerignore, which is fine - runtime will use VERSION file
+COPY .git ./.git 2>/dev/null || true
 
 EXPOSE 8000 443/tcp 443/udp
 
