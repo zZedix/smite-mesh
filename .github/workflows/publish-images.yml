@@ -84,6 +84,17 @@ jobs:
             fi
           fi
 
+      - name: Determine if should tag as latest
+        id: tag-latest
+        run: |
+          if [ "${{ github.ref_type }}" = "tag" ] && [[ "${{ github.ref_name }}" =~ ^v[0-9] ]]; then
+            echo "should_tag=true" >> "$GITHUB_OUTPUT"
+          elif [ "${{ github.ref }}" = "refs/heads/main" ]; then
+            echo "should_tag=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "should_tag=false" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Extract metadata for panel image
         id: meta-panel
         uses: docker/metadata-action@v5
@@ -96,7 +107,7 @@ jobs:
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
             type=sha
-            type=raw,value=latest,enable={{is_default_branch || (github.ref_type == 'tag' && startsWith(github.ref_name, 'v'))}}
+            type=raw,value=latest,enable=${{ steps.tag-latest.outputs.should_tag == 'true' }}
 
       - name: Build and push panel image
         uses: docker/build-push-action@v5
@@ -124,7 +135,7 @@ jobs:
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
             type=sha
-            type=raw,value=latest,enable={{is_default_branch || (github.ref_type == 'tag' && startsWith(github.ref_name, 'v'))}}
+            type=raw,value=latest,enable=${{ steps.tag-latest.outputs.should_tag == 'true' }}
 
       - name: Build and push node image
         uses: docker/build-push-action@v5
