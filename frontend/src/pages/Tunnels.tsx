@@ -960,10 +960,21 @@ const AddTunnelModal = ({ nodes, servers, onClose, onSuccess }: AddTunnelModalPr
       let spec = getSpecForType(formData.core, formData.type)
       let tunnelType = formData.type
       
+      // Require node/server selection for all cores (including GOST)
+      if (!formData.node_id && !formData.iran_node_id) {
+        alert('Please select an Iran node')
+        return
+      }
+      if (!formData.foreign_node_id) {
+        alert('Please select a foreign server')
+        return
+      }
+      
       spec.use_ipv6 = formData.use_ipv6 || false
       
       if (formData.core === 'xray' && (formData.type === 'tcp' || formData.type === 'udp' || formData.type === 'grpc' || formData.type === 'tcpmux')) {
-        const remoteIp = formData.remote_ip || (formData.use_ipv6 ? '::1' : '127.0.0.1')
+        const selectedServer = servers.find((srv) => srv.id === formData.foreign_node_id)
+        const remoteIp = formData.remote_ip || selectedServer?.metadata?.ip_address || (formData.use_ipv6 ? '::1' : '127.0.0.1')
         const port = parseInt(formData.port.toString()) || 8080
         spec.remote_ip = remoteIp
         spec.remote_port = port
@@ -1093,7 +1104,7 @@ const AddTunnelModal = ({ nodes, servers, onClose, onSuccess }: AddTunnelModalPr
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 overflow-auto">
-      <div className="bg-white dark:bg-gray-800 rounded-lg p-6 w-full max-w-2xl my-8">
+      <div className="bg-white dark:bg-gray-800 rounded-lg p-6 w-full max-w-5xl max-h-[90vh] overflow-y-auto my-8">
         <h2 className="text-xl font-bold text-gray-900 dark:text-white mb-4">Create Tunnel</h2>
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
@@ -1108,46 +1119,52 @@ const AddTunnelModal = ({ nodes, servers, onClose, onSuccess }: AddTunnelModalPr
               required
             />
           </div>
-          {formData.core !== 'xray' && (
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                  Iran Node (Client)
-                </label>
-                <select
-                  value={formData.iran_node_id || formData.node_id}
-                  onChange={(e) => setFormData({ ...formData, iran_node_id: e.target.value, node_id: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg dark:bg-gray-700 dark:text-white"
-                  required={formData.core === 'rathole' || formData.core === 'backhaul' || formData.core === 'frp' || formData.core === 'chisel'}
-                >
-                  <option value="">Select an Iran node</option>
-                  {nodes.map((node) => (
-                    <option key={node.id} value={node.id}>
-                      {node.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                  Foreign Server (Server)
-                </label>
-                <select
-                  value={formData.foreign_node_id}
-                  onChange={(e) => setFormData({ ...formData, foreign_node_id: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg dark:bg-gray-700 dark:text-white"
-                  required={formData.core === 'rathole' || formData.core === 'backhaul' || formData.core === 'frp' || formData.core === 'chisel'}
-                >
-                  <option value="">Select a foreign server</option>
-                  {servers.map((server) => (
-                    <option key={server.id} value={server.id}>
-                      {server.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                Iran Node (Client)
+              </label>
+              <select
+                value={formData.iran_node_id || formData.node_id}
+                onChange={(e) => setFormData({ ...formData, iran_node_id: e.target.value, node_id: e.target.value })}
+                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg dark:bg-gray-700 dark:text-white"
+                required={true}
+              >
+                <option value="">Select an Iran node</option>
+                {nodes.map((node) => (
+                  <option key={node.id} value={node.id}>
+                    {node.name}
+                  </option>
+                ))}
+              </select>
             </div>
-          )}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                Foreign Server (Server)
+              </label>
+              <select
+                value={formData.foreign_node_id}
+                onChange={(e) => {
+                  const selectedId = e.target.value
+                  const selected = servers.find((srv) => srv.id === selectedId)
+                  setFormData((prev) => ({
+                    ...prev,
+                    foreign_node_id: selectedId,
+                    remote_ip: selected?.metadata?.ip_address || prev.remote_ip,
+                  }))
+                }}
+                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg dark:bg-gray-700 dark:text-white"
+                required={true}
+              >
+                <option value="">Select a foreign server</option>
+                {servers.map((server) => (
+                  <option key={server.id} value={server.id}>
+                    {server.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
 
           <div className="grid grid-cols-2 gap-4">
             <div>

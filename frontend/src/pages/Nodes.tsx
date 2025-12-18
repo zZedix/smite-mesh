@@ -10,6 +10,7 @@ interface Node {
   registered_at: string
   last_seen: string
   metadata: Record<string, any>
+  role?: string
 }
 
 const Nodes = () => {
@@ -35,7 +36,7 @@ const Nodes = () => {
       const response = await api.get('/nodes')
       // Show only Iran-side nodes (default role is iran when missing)
       const iranNodes = response.data.filter((node: Node) => 
-        node.metadata?.role === 'iran' || !node.metadata?.role
+        node.role === 'iran' || node.metadata?.role === 'iran' || (!node.role && !node.metadata?.role)
       )
       setNodes(iranNodes)
     } catch (error) {
