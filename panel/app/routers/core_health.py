@@ -337,7 +337,7 @@ async def _reset_core(core: str, app_or_request, db: AsyncSession):
                 logger.warning(f"Tunnel {tunnel.id}: Missing foreign or iran node, skipping reset")
                 continue
             
-            # Prepare server config for foreign node and client config for iran node
+            # Prepare server config for iran node and client config for foreign node (Iran = SERVER, Foreign = CLIENT)
             server_spec = tunnel.spec.copy() if tunnel.spec else {}
             server_spec["mode"] = "server"
             
@@ -367,17 +367,17 @@ async def _reset_core(core: str, app_or_request, db: AsyncSession):
                 elif "tls" in server_spec:
                     server_spec["websocket_tls"] = server_spec["tls"]
                 
-                foreign_node_ip = foreign_node.node_metadata.get("ip_address")
-                if not foreign_node_ip:
-                    logger.warning(f"Tunnel {tunnel.id}: Foreign node has no IP address, skipping")
+                iran_node_ip = iran_node.node_metadata.get("ip_address")
+                if not iran_node_ip:
+                    logger.warning(f"Tunnel {tunnel.id}: Iran node has no IP address, skipping")
                     continue
                 transport_lower = transport.lower()
                 if transport_lower in ("websocket", "ws"):
                     use_tls = bool(server_spec.get("websocket_tls") or server_spec.get("tls"))
                     protocol = "wss://" if use_tls else "ws://"
-                    client_spec["remote_addr"] = f"{protocol}{foreign_node_ip}:{control_port}"
+                    client_spec["remote_addr"] = f"{protocol}{iran_node_ip}:{control_port}"
                 else:
-                    client_spec["remote_addr"] = f"{foreign_node_ip}:{control_port}"
+                    client_spec["remote_addr"] = f"{iran_node_ip}:{control_port}"
                 client_spec["transport"] = transport
                 client_spec["type"] = transport
                 client_spec["token"] = token
@@ -387,7 +387,7 @@ async def _reset_core(core: str, app_or_request, db: AsyncSession):
                     client_spec["websocket_tls"] = server_spec["tls"]
                 local_addr = client_spec.get("local_addr")
                 if not local_addr:
-                    local_addr = f"{foreign_node_ip}:{proxy_port}"
+                    local_addr = f"{iran_node_ip}:{proxy_port}"
                 client_spec["local_addr"] = local_addr
             
             elif core == "chisel":
@@ -396,9 +396,9 @@ async def _reset_core(core: str, app_or_request, db: AsyncSession):
                     logger.warning(f"Tunnel {tunnel.id}: Missing listen_port, skipping")
                     continue
                 
-                foreign_node_ip = foreign_node.node_metadata.get("ip_address")
-                if not foreign_node_ip:
-                    logger.warning(f"Tunnel {tunnel.id}: Foreign node has no IP address, skipping")
+                iran_node_ip = iran_node.node_metadata.get("ip_address")
+                if not iran_node_ip:
+                    logger.warning(f"Tunnel {tunnel.id}: Iran node has no IP address, skipping")
                     continue
                 server_control_port = server_spec.get("control_port") or (int(listen_port) + 10000)
                 server_spec["server_port"] = server_control_port
@@ -410,7 +410,7 @@ async def _reset_core(core: str, app_or_request, db: AsyncSession):
                 if fingerprint:
                     server_spec["fingerprint"] = fingerprint
                 
-                client_spec["server_url"] = f"http://{foreign_node_ip}:{server_control_port}"
+                client_spec["server_url"] = f"http://{iran_node_ip}:{server_control_port}"
                 client_spec["reverse_port"] = listen_port
                 if auth:
                     client_spec["auth"] = auth
@@ -418,7 +418,7 @@ async def _reset_core(core: str, app_or_request, db: AsyncSession):
                     client_spec["fingerprint"] = fingerprint
                 local_addr = client_spec.get("local_addr")
                 if not local_addr:
-                    local_addr = f"{foreign_node_ip}:{listen_port}"
+                    local_addr = f"{iran_node_ip}:{listen_port}"
                 client_spec["local_addr"] = local_addr
             
             elif core == "frp":
@@ -428,11 +428,11 @@ async def _reset_core(core: str, app_or_request, db: AsyncSession):
                 if token:
                     server_spec["token"] = token
                 
-                foreign_node_ip = foreign_node.node_metadata.get("ip_address")
-                if not foreign_node_ip:
-                    logger.warning(f"Tunnel {tunnel.id}: Foreign node has no IP address, skipping")
+                iran_node_ip = iran_node.node_metadata.get("ip_address")
+                if not iran_node_ip:
+                    logger.warning(f"Tunnel {tunnel.id}: Iran node has no IP address, skipping")
                     continue
-                client_spec["server_addr"] = foreign_node_ip
+                client_spec["server_addr"] = iran_node_ip
                 client_spec["server_port"] = bind_port
                 if token:
                     client_spec["token"] = token
@@ -440,7 +440,7 @@ async def _reset_core(core: str, app_or_request, db: AsyncSession):
                 if tunnel_type not in ["tcp", "udp"]:
                     tunnel_type = "tcp"
                 client_spec["type"] = tunnel_type
-                local_ip = client_spec.get("local_ip") or foreign_node_ip
+                local_ip = client_spec.get("local_ip") or iran_node_ip
                 local_port = client_spec.get("local_port") or bind_port
                 client_spec["local_ip"] = local_ip
                 client_spec["local_port"] = local_port
@@ -469,30 +469,30 @@ async def _reset_core(core: str, app_or_request, db: AsyncSession):
                 if token:
                     server_spec["token"] = token
                 
-                foreign_node_ip = foreign_node.node_metadata.get("ip_address")
-                if not foreign_node_ip:
-                    logger.warning(f"Tunnel {tunnel.id}: Foreign node has no IP address, skipping")
+                iran_node_ip = iran_node.node_metadata.get("ip_address")
+                if not iran_node_ip:
+                    logger.warning(f"Tunnel {tunnel.id}: Iran node has no IP address, skipping")
                     continue
                 transport_lower = transport.lower()
                 if transport_lower in ("ws", "wsmux"):
                     use_tls = bool(server_spec.get("tls_cert") or server_spec.get("server_options", {}).get("tls_cert"))
                     protocol = "wss://" if use_tls else "ws://"
-                    client_spec["remote_addr"] = f"{protocol}{foreign_node_ip}:{control_port}"
+                    client_spec["remote_addr"] = f"{protocol}{iran_node_ip}:{control_port}"
                 else:
-                    client_spec["remote_addr"] = f"{foreign_node_ip}:{control_port}"
+                    client_spec["remote_addr"] = f"{iran_node_ip}:{control_port}"
                 client_spec["transport"] = transport
                 client_spec["type"] = transport
                 if token:
                     client_spec["token"] = token
             
-            # Apply server config to foreign node
-            if not foreign_node.node_metadata.get("api_address"):
-                foreign_node.node_metadata["api_address"] = f"http://{foreign_node.node_metadata.get('ip_address', foreign_node.fingerprint)}:{foreign_node.node_metadata.get('api_port', 8888)}"
+            # Apply server config to iran node (Iran = SERVER)
+            if not iran_node.node_metadata.get("api_address"):
+                iran_node.node_metadata["api_address"] = f"http://{iran_node.node_metadata.get('ip_address', iran_node.fingerprint)}:{iran_node.node_metadata.get('api_port', 8888)}"
                 await db.commit()
             
-            logger.info(f"Restarting tunnel {tunnel.id}: applying server config to foreign node {foreign_node.id}")
+            logger.info(f"Restarting tunnel {tunnel.id}: applying server config to iran node {iran_node.id}")
             server_response = await client.send_to_node(
-                node_id=foreign_node.id,
+                node_id=iran_node.id,
                 endpoint="/api/agent/tunnels/apply",
                 data={
                     "tunnel_id": tunnel.id,
@@ -503,18 +503,18 @@ async def _reset_core(core: str, app_or_request, db: AsyncSession):
             )
             
             if server_response.get("status") == "error":
-                error_msg = server_response.get("message", "Unknown error from foreign node")
-                logger.error(f"Failed to restart tunnel {tunnel.id} on foreign node {foreign_node.id}: {error_msg}")
+                error_msg = server_response.get("message", "Unknown error from iran node")
+                logger.error(f"Failed to restart tunnel {tunnel.id} on iran node {iran_node.id}: {error_msg}")
                 continue
             
-            # Apply client config to iran node
-            if not iran_node.node_metadata.get("api_address"):
-                iran_node.node_metadata["api_address"] = f"http://{iran_node.node_metadata.get('ip_address', iran_node.fingerprint)}:{iran_node.node_metadata.get('api_port', 8888)}"
+            # Apply client config to foreign node (Foreign = CLIENT)
+            if not foreign_node.node_metadata.get("api_address"):
+                foreign_node.node_metadata["api_address"] = f"http://{foreign_node.node_metadata.get('ip_address', foreign_node.fingerprint)}:{foreign_node.node_metadata.get('api_port', 8888)}"
                 await db.commit()
             
-            logger.info(f"Restarting tunnel {tunnel.id}: applying client config to iran node {iran_node.id}")
+            logger.info(f"Restarting tunnel {tunnel.id}: applying client config to foreign node {foreign_node.id}")
             client_response = await client.send_to_node(
-                node_id=iran_node.id,
+                node_id=foreign_node.id,
                 endpoint="/api/agent/tunnels/apply",
                 data={
                     "tunnel_id": tunnel.id,
@@ -525,8 +525,8 @@ async def _reset_core(core: str, app_or_request, db: AsyncSession):
             )
             
             if client_response.get("status") == "error":
-                error_msg = client_response.get("message", "Unknown error from iran node")
-                logger.error(f"Failed to restart tunnel {tunnel.id} on iran node {iran_node.id}: {error_msg}")
+                error_msg = client_response.get("message", "Unknown error from foreign node")
+                logger.error(f"Failed to restart tunnel {tunnel.id} on foreign node {foreign_node.id}: {error_msg}")
             else:
                 logger.info(f"Successfully restarted tunnel {tunnel.id} on both nodes")
             

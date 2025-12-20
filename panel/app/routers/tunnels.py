@@ -239,21 +239,21 @@ async def create_tunnel(tunnel: TunnelCreate, request: Request, db: AsyncSession
             needs_frp_server,
         )
         
-        # For reverse tunnels, apply server config to foreign node and client config to iran node
+        # For reverse tunnels, apply server config to iran node and client config to foreign node
         if is_reverse_tunnel and foreign_node and iran_node:
             client = Hysteria2Client()
             
-            # Prepare server config for foreign node
+            # Prepare server config for iran node (Iran = SERVER)
             server_spec = db_tunnel.spec.copy() if db_tunnel.spec else {}
             server_spec["mode"] = "server"  # Indicate this is server config
             
-            # Prepare client config for iran node  
+            # Prepare client config for foreign node (Foreign = CLIENT)
             client_spec = db_tunnel.spec.copy() if db_tunnel.spec else {}
             client_spec["mode"] = "client"  # Indicate this is client config
             
             # For each tunnel type, prepare appropriate configs
             if db_tunnel.core == "rathole":
-                # Rathole server config for foreign node
+                # Rathole server config for iran node (Iran = SERVER)
                 transport = server_spec.get("transport") or server_spec.get("type") or "tcp"
                 proxy_port = server_spec.get("remote_port") or server_spec.get("listen_port")
                 token = server_spec.get("token")
@@ -264,7 +264,7 @@ async def create_tunnel(tunnel: TunnelCreate, request: Request, db: AsyncSession
                     await db.refresh(db_tunnel)
                     return db_tunnel
                 
-                # Server config: foreign node listens on control port and proxy port
+                # Server config: iran node listens on control port and proxy port
                 # Generate unique control port for each tunnel to avoid conflicts
                 remote_addr = server_spec.get("remote_addr", "0.0.0.0:23333")
                 from app.utils import parse_address_port
@@ -283,11 +283,11 @@ async def create_tunnel(tunnel: TunnelCreate, request: Request, db: AsyncSession
                 elif "tls" in server_spec:
                     server_spec["websocket_tls"] = server_spec["tls"]
                 
-                # Client config: iran node connects to foreign node
-                foreign_node_ip = foreign_node.node_metadata.get("ip_address")
-                if not foreign_node_ip:
+                # Client config: foreign node connects to iran node
+                iran_node_ip = iran_node.node_metadata.get("ip_address")
+                if not iran_node_ip:
                     db_tunnel.status = "error"
-                    db_tunnel.error_message = "Foreign node has no IP address"
+                    db_tunnel.error_message = "Iran node has no IP address"
                     await db.commit()
                     await db.refresh(db_tunnel)
                     return db_tunnel
@@ -297,9 +297,9 @@ async def create_tunnel(tunnel: TunnelCreate, request: Request, db: AsyncSession
                     # Check if TLS is enabled
                     use_tls = bool(server_spec.get("websocket_tls") or server_spec.get("tls"))
                     protocol = "wss://" if use_tls else "ws://"
-                    client_spec["remote_addr"] = f"{protocol}{foreign_node_ip}:{control_port}"
+                    client_spec["remote_addr"] = f"{protocol}{iran_node_ip}:{control_port}"
                 else:
-                    client_spec["remote_addr"] = f"{foreign_node_ip}:{control_port}"
+                    client_spec["remote_addr"] = f"{iran_node_ip}:{control_port}"
                 client_spec["transport"] = transport
                 client_spec["type"] = transport
                 client_spec["token"] = token
@@ -307,14 +307,14 @@ async def create_tunnel(tunnel: TunnelCreate, request: Request, db: AsyncSession
                     client_spec["websocket_tls"] = server_spec["websocket_tls"]
                 elif "tls" in server_spec:
                     client_spec["websocket_tls"] = server_spec["tls"]
-                # Client forwards to proxy port on foreign node (where Xray listens)
+                # Client forwards to proxy port on iran node (where Xray listens)
                 local_addr = client_spec.get("local_addr")
                 if not local_addr:
-                    local_addr = f"{foreign_node_ip}:{proxy_port}"
+                    local_addr = f"{iran_node_ip}:{proxy_port}"
                 client_spec["local_addr"] = local_addr
                 
             elif db_tunnel.core == "chisel":
-                # Chisel server config for foreign node
+                # Chisel server config for iran node (Iran = SERVER)
                 listen_port = server_spec.get("listen_port") or server_spec.get("remote_port")
                 if not listen_port:
                     db_tunnel.status = "error"
@@ -323,10 +323,10 @@ async def create_tunnel(tunnel: TunnelCreate, request: Request, db: AsyncSession
                     await db.refresh(db_tunnel)
                     return db_tunnel
                 
-                foreign_node_ip = foreign_node.node_metadata.get("ip_address")
-                if not foreign_node_ip:
+                iran_node_ip = iran_node.node_metadata.get("ip_address")
+                if not iran_node_ip:
                     db_tunnel.status = "error"
-                    db_tunnel.error_message = "Foreign node has no IP address"
+                    db_tunnel.error_message = "Iran node has no IP address"
                     await db.commit()
                     await db.refresh(db_tunnel)
                     return db_tunnel
@@ -334,7 +334,7 @@ async def create_tunnel(tunnel: TunnelCreate, request: Request, db: AsyncSession
                 import hashlib
                 port_hash = int(hashlib.md5(db_tunnel.id.encode()).hexdigest()[:8], 16)
                 server_control_port = server_spec.get("control_port") or (int(listen_port) + 10000 + (port_hash % 1000))
-                # Server config: foreign node runs chisel server
+                # Server config: iran node runs chisel server
                 server_spec["server_port"] = server_control_port
                 server_spec["reverse_port"] = listen_port
                 auth = server_spec.get("auth")
@@ -344,8 +344,8 @@ async def create_tunnel(tunnel: TunnelCreate, request: Request, db: AsyncSession
                 if fingerprint:
                     server_spec["fingerprint"] = fingerprint
                 
-                # Client config: iran node connects to foreign node
-                client_spec["server_url"] = f"http://{foreign_node_ip}:{server_control_port}"
+                # Client config: foreign node connects to iran node
+                client_spec["server_url"] = f"http://{iran_node_ip}:{server_control_port}"
                 client_spec["reverse_port"] = listen_port
                 if auth:
                     client_spec["auth"] = auth
@@ -353,12 +353,12 @@ async def create_tunnel(tunnel: TunnelCreate, request: Request, db: AsyncSession
                     client_spec["fingerprint"] = fingerprint
                 local_addr = client_spec.get("local_addr")
                 if not local_addr:
-                    # Default: forward to the same port on foreign node (where Xray might be)
-                    local_addr = f"{foreign_node_ip}:{listen_port}"
+                    # Default: forward to the same port on iran node (where Xray might be)
+                    local_addr = f"{iran_node_ip}:{listen_port}"
                 client_spec["local_addr"] = local_addr
                 
             elif db_tunnel.core == "frp":
-                # FRP server config for foreign node
+                # FRP server config for iran node (Iran = SERVER)
                 # Generate unique bind_port to avoid conflicts
                 import hashlib
                 port_hash = int(hashlib.md5(db_tunnel.id.encode()).hexdigest()[:8], 16)
@@ -368,15 +368,15 @@ async def create_tunnel(tunnel: TunnelCreate, request: Request, db: AsyncSession
                 if token:
                     server_spec["token"] = token
                 
-                # FRP client config for iran node
-                foreign_node_ip = foreign_node.node_metadata.get("ip_address")
-                if not foreign_node_ip:
+                # FRP client config for foreign node (Foreign = CLIENT)
+                iran_node_ip = iran_node.node_metadata.get("ip_address")
+                if not iran_node_ip:
                     db_tunnel.status = "error"
-                    db_tunnel.error_message = "Foreign node has no IP address"
+                    db_tunnel.error_message = "Iran node has no IP address"
                     await db.commit()
                     await db.refresh(db_tunnel)
                     return db_tunnel
-                client_spec["server_addr"] = foreign_node_ip
+                client_spec["server_addr"] = iran_node_ip
                 client_spec["server_port"] = bind_port
                 if token:
                     client_spec["token"] = token
@@ -384,13 +384,13 @@ async def create_tunnel(tunnel: TunnelCreate, request: Request, db: AsyncSession
                 if tunnel_type not in ["tcp", "udp"]:
                     tunnel_type = "tcp"  # Default to tcp if invalid
                 client_spec["type"] = tunnel_type
-                local_ip = client_spec.get("local_ip") or foreign_node_ip
+                local_ip = client_spec.get("local_ip") or iran_node_ip
                 local_port = client_spec.get("local_port") or bind_port
                 client_spec["local_ip"] = local_ip
                 client_spec["local_port"] = local_port
                 
             elif db_tunnel.core == "backhaul":
-                # Backhaul server config for foreign node
+                # Backhaul server config for iran node (Iran = SERVER)
                 transport = server_spec.get("transport") or server_spec.get("type") or "tcp"
                 # Generate unique control_port to avoid conflicts
                 import hashlib
@@ -421,11 +421,11 @@ async def create_tunnel(tunnel: TunnelCreate, request: Request, db: AsyncSession
                 if token:
                     server_spec["token"] = token
                 
-                # Client config: iran node connects to foreign node
-                foreign_node_ip = foreign_node.node_metadata.get("ip_address")
-                if not foreign_node_ip:
+                # Client config: foreign node connects to iran node
+                iran_node_ip = iran_node.node_metadata.get("ip_address")
+                if not iran_node_ip:
                     db_tunnel.status = "error"
-                    db_tunnel.error_message = "Foreign node has no IP address"
+                    db_tunnel.error_message = "Iran node has no IP address"
                     await db.commit()
                     await db.refresh(db_tunnel)
                     return db_tunnel
@@ -435,22 +435,22 @@ async def create_tunnel(tunnel: TunnelCreate, request: Request, db: AsyncSession
                     # Check if TLS is enabled (would need tls_cert/tls_key in server config)
                     use_tls = bool(server_spec.get("tls_cert") or server_spec.get("server_options", {}).get("tls_cert"))
                     protocol = "wss://" if use_tls else "ws://"
-                    client_spec["remote_addr"] = f"{protocol}{foreign_node_ip}:{control_port}"
+                    client_spec["remote_addr"] = f"{protocol}{iran_node_ip}:{control_port}"
                 else:
-                    client_spec["remote_addr"] = f"{foreign_node_ip}:{control_port}"
+                    client_spec["remote_addr"] = f"{iran_node_ip}:{control_port}"
                 client_spec["transport"] = transport
                 client_spec["type"] = transport
                 if token:
                     client_spec["token"] = token
             
-            # Apply server config to foreign node
-            if not foreign_node.node_metadata.get("api_address"):
-                foreign_node.node_metadata["api_address"] = f"http://{foreign_node.node_metadata.get('ip_address', foreign_node.fingerprint)}:{foreign_node.node_metadata.get('api_port', 8888)}"
+            # Apply server config to iran node (Iran = SERVER)
+            if not iran_node.node_metadata.get("api_address"):
+                iran_node.node_metadata["api_address"] = f"http://{iran_node.node_metadata.get('ip_address', iran_node.fingerprint)}:{iran_node.node_metadata.get('api_port', 8888)}"
                 await db.commit()
             
-            logger.info(f"Applying server config to foreign node {foreign_node.id} for tunnel {db_tunnel.id}")
+            logger.info(f"Applying server config to iran node {iran_node.id} for tunnel {db_tunnel.id}")
             server_response = await client.send_to_node(
-                node_id=foreign_node.id,
+                node_id=iran_node.id,
                 endpoint="/api/agent/tunnels/apply",
                 data={
                     "tunnel_id": db_tunnel.id,
@@ -462,21 +462,21 @@ async def create_tunnel(tunnel: TunnelCreate, request: Request, db: AsyncSession
             
             if server_response.get("status") == "error":
                 db_tunnel.status = "error"
-                error_msg = server_response.get("message", "Unknown error from foreign node")
-                db_tunnel.error_message = f"Foreign node error: {error_msg}"
-                logger.error(f"Tunnel {db_tunnel.id}: Foreign node error: {error_msg}")
+                error_msg = server_response.get("message", "Unknown error from iran node")
+                db_tunnel.error_message = f"Iran node error: {error_msg}"
+                logger.error(f"Tunnel {db_tunnel.id}: Iran node error: {error_msg}")
                 await db.commit()
                 await db.refresh(db_tunnel)
                 return db_tunnel
             
-            # Apply client config to iran node
-            if not iran_node.node_metadata.get("api_address"):
-                iran_node.node_metadata["api_address"] = f"http://{iran_node.node_metadata.get('ip_address', iran_node.fingerprint)}:{iran_node.node_metadata.get('api_port', 8888)}"
+            # Apply client config to foreign node (Foreign = CLIENT)
+            if not foreign_node.node_metadata.get("api_address"):
+                foreign_node.node_metadata["api_address"] = f"http://{foreign_node.node_metadata.get('ip_address', foreign_node.fingerprint)}:{foreign_node.node_metadata.get('api_port', 8888)}"
                 await db.commit()
             
-            logger.info(f"Applying client config to iran node {iran_node.id} for tunnel {db_tunnel.id}")
+            logger.info(f"Applying client config to foreign node {foreign_node.id} for tunnel {db_tunnel.id}")
             client_response = await client.send_to_node(
-                node_id=iran_node.id,
+                node_id=foreign_node.id,
                 endpoint="/api/agent/tunnels/apply",
                 data={
                     "tunnel_id": db_tunnel.id,
@@ -488,13 +488,13 @@ async def create_tunnel(tunnel: TunnelCreate, request: Request, db: AsyncSession
             
             if client_response.get("status") == "error":
                 db_tunnel.status = "error"
-                error_msg = client_response.get("message", "Unknown error from iran node")
-                db_tunnel.error_message = f"Iran node error: {error_msg}"
-                logger.error(f"Tunnel {db_tunnel.id}: Iran node error: {error_msg}")
-                # Try to clean up foreign node
+                error_msg = client_response.get("message", "Unknown error from foreign node")
+                db_tunnel.error_message = f"Foreign node error: {error_msg}"
+                logger.error(f"Tunnel {db_tunnel.id}: Foreign node error: {error_msg}")
+                # Try to clean up iran node
                 try:
                     await client.send_to_node(
-                        node_id=foreign_node.id,
+                        node_id=iran_node.id,
                         endpoint="/api/agent/tunnels/remove",
                         data={"tunnel_id": db_tunnel.id}
                     )
