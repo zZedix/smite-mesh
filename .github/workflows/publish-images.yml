@@ -90,10 +90,22 @@ jobs:
         run: |
           if [ "${{ github.ref_type }}" = "tag" ] && [[ "${{ github.ref_name }}" =~ ^v[0-9] ]]; then
             echo "should_tag=true" >> "$GITHUB_OUTPUT"
-          elif [ "${{ github.ref }}" = "refs/heads/main" ]; then
-            echo "should_tag=true" >> "$GITHUB_OUTPUT"
           else
             echo "should_tag=false" >> "$GITHUB_OUTPUT"
+          fi
+      
+      - name: Check if version tag exists
+        id: has-version
+        run: |
+          if [ "${{ github.ref_type }}" = "tag" ]; then
+            echo "has_version=true" >> "$GITHUB_OUTPUT"
+          else
+            LATEST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
+            if [ -n "$LATEST_TAG" ] && [[ "$LATEST_TAG" =~ ^v[0-9] ]]; then
+              echo "has_version=true" >> "$GITHUB_OUTPUT"
+            else
+              echo "has_version=false" >> "$GITHUB_OUTPUT"
+            fi
           fi
 
       - name: Extract metadata for panel image
@@ -103,11 +115,11 @@ jobs:
         with:
           images: ${{ env.REGISTRY }}/${{ steps.image-prefix.outputs.prefix }}-panel
           tags: |
-            type=ref,event=branch
+            type=ref,event=branch,enable=${{ github.ref != 'refs/heads/main' }}
             type=ref,event=pr
-            type=semver,pattern={{version}}
-            type=semver,pattern={{major}}.{{minor}}
-            type=sha
+            type=semver,pattern={{version}},enable=${{ steps.has-version.outputs.has_version == 'true' }}
+            type=semver,pattern={{major}}.{{minor}},enable=${{ steps.has-version.outputs.has_version == 'true' }}
+            type=sha,enable=${{ github.ref != 'refs/heads/main' }}
             type=raw,value=latest,enable=${{ steps.tag-latest.outputs.should_tag == 'true' }}
 
       - name: Build and push panel image
@@ -131,11 +143,11 @@ jobs:
         with:
           images: ${{ env.REGISTRY }}/${{ steps.image-prefix.outputs.prefix }}-node
           tags: |
-            type=ref,event=branch
+            type=ref,event=branch,enable=${{ github.ref != 'refs/heads/main' }}
             type=ref,event=pr
-            type=semver,pattern={{version}}
-            type=semver,pattern={{major}}.{{minor}}
-            type=sha
+            type=semver,pattern={{version}},enable=${{ steps.has-version.outputs.has_version == 'true' }}
+            type=semver,pattern={{major}}.{{minor}},enable=${{ steps.has-version.outputs.has_version == 'true' }}
+            type=sha,enable=${{ github.ref != 'refs/heads/main' }}
             type=raw,value=latest,enable=${{ steps.tag-latest.outputs.should_tag == 'true' }}
 
       - name: Build and push node image

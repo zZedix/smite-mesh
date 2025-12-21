@@ -35,7 +35,7 @@ const Nodes = () => {
       const response = await api.get('/nodes')
       // Filter only iran nodes (exclude foreign servers)
       const iranNodes = response.data.filter((node: Node) => 
-        node.metadata?.role === 'iran' || !node.metadata?.role  // Default to iran for backward compatibility
+        node.metadata?.role !== 'foreign' && (node.metadata?.role === 'iran' || !node.metadata?.role)
       )
       setNodes(iranNodes)
     } catch (error) {
