@@ -315,8 +315,9 @@ async def _restore_node_tunnels():
                             iran_node = None
                     
                     if not foreign_node:
-                        result = await db.execute(select(Node).where(Node.node_metadata["role"].astext == "foreign"))
-                        foreign_nodes = result.scalars().all()
+                        result = await db.execute(select(Node))
+                        all_nodes = result.scalars().all()
+                        foreign_nodes = [n for n in all_nodes if n.node_metadata and n.node_metadata.get("role") == "foreign"]
                         if foreign_nodes:
                             foreign_node = foreign_nodes[0]
                     
@@ -325,8 +326,9 @@ async def _restore_node_tunnels():
                             result = await db.execute(select(Node).where(Node.id == tunnel.node_id))
                             iran_node = result.scalar_one_or_none()
                         if not iran_node:
-                            result = await db.execute(select(Node).where(Node.node_metadata["role"].astext == "iran"))
-                            iran_nodes = result.scalars().all()
+                            result = await db.execute(select(Node))
+                            all_nodes = result.scalars().all()
+                            iran_nodes = [n for n in all_nodes if n.node_metadata and n.node_metadata.get("role") == "iran"]
                             if iran_nodes:
                                 iran_node = iran_nodes[0]
                     
@@ -586,8 +588,9 @@ async def _restore_node_tunnels():
                             continue
                     
                     if not iran_node:
-                        result = await db.execute(select(Node).where(Node.node_metadata["role"].astext == "iran"))
-                        iran_nodes = result.scalars().all()
+                        result = await db.execute(select(Node))
+                        all_nodes = result.scalars().all()
+                        iran_nodes = [n for n in all_nodes if n.node_metadata and n.node_metadata.get("role") == "iran"]
                         if iran_nodes:
                             iran_node = iran_nodes[0]
                     
@@ -597,8 +600,9 @@ async def _restore_node_tunnels():
                         continue
                     
                     if not foreign_ip or foreign_ip in ["127.0.0.1", "localhost"]:
-                        result = await db.execute(select(Node).where(Node.node_metadata["role"].astext == "foreign"))
-                        foreign_nodes = result.scalars().all()
+                        result = await db.execute(select(Node))
+                        all_nodes = result.scalars().all()
+                        foreign_nodes = [n for n in all_nodes if n.node_metadata and n.node_metadata.get("role") == "foreign"]
                         if foreign_nodes:
                             foreign_node = foreign_nodes[0]
                             foreign_ip = foreign_node.node_metadata.get("ip_address")
