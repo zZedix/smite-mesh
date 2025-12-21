@@ -1,4 +1,6 @@
-# Smite - Tunneling Control Panel
+# Smite
+
+<!-- Rebuild trigger --> - Tunneling Control Panel
 
 <div align="center">
   <picture>
