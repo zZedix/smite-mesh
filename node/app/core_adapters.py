@@ -303,6 +303,22 @@ class BackhaulAdapter:
             logger.info(f"Backhaul tunnel {tunnel_id} already exists, removing it first")
             self.remove(tunnel_id)
         
+        # Clean up any orphaned processes using the same config file
+        config_path = self.config_dir / f"{tunnel_id}.toml"
+        if config_path.exists():
+            try:
+                # Kill any processes using this config file
+                subprocess.run(
+                    ["pkill", "-f", f"backhaul.*{tunnel_id}"],
+                    check=False,
+                    timeout=3,
+                    stderr=subprocess.DEVNULL,
+                    stdout=subprocess.DEVNULL
+                )
+                time.sleep(0.5)  # Give processes time to exit
+            except Exception as e:
+                logger.warning(f"Failed to kill orphaned Backhaul processes for {tunnel_id}: {e}")
+        
         mode = spec.get('mode', 'client')
         
         if mode == 'server':
@@ -357,6 +373,38 @@ class BackhaulAdapter:
             config_content = self._render_toml({"server": server_config})
             config_path.write_text(config_content, encoding="utf-8")
             logger.info(f"Backhaul server config written to {config_path}")
+            
+            # Extract port from bind_addr and kill any processes using it
+            try:
+                bind_port = bind_addr.split(":")[-1] if ":" in bind_addr else None
+                if bind_port:
+                    # Find and kill any processes listening on this port using ss
+                    for proto in ["tcp", "udp"]:
+                        try:
+                            result = subprocess.run(
+                                ["ss", "-lpn", proto],
+                                capture_output=True,
+                                text=True,
+                                timeout=2
+                            )
+                            for line in result.stdout.splitlines():
+                                if f":{bind_port} " in line or f":{bind_port}\n" in line:
+                                    # Extract PID from line (format: users:(("backhaul",pid=123,fd=3)))
+                                    import re
+                                    pid_match = re.search(r'pid=(\d+)', line)
+                                    if pid_match:
+                                        pid = int(pid_match.group(1))
+                                        try:
+                                            os.kill(pid, 15)  # SIGTERM
+                                            logger.info(f"Killed process {pid} using port {bind_port}/{proto}")
+                                            time.sleep(0.2)
+                                        except (ProcessLookupError, PermissionError):
+                                            pass
+                        except (FileNotFoundError, subprocess.TimeoutExpired):
+                            pass
+                    time.sleep(0.5)  # Give processes time to exit
+            except Exception as e:
+                logger.warning(f"Failed to kill processes on port {bind_port}: {e}")
             
             binary_path = self._resolve_binary_path()
             logger.info(f"Using Backhaul binary: {binary_path}")
