@@ -7,6 +7,8 @@ import Dashboard from './pages/Dashboard'
 import Nodes from './pages/Nodes'
 import Servers from './pages/Servers'
 import Tunnels from './pages/Tunnels'
+import Mesh from './pages/Mesh'
+import Overlay from './pages/Overlay'
 import Logs from './pages/Logs'
 import CoreHealth from './pages/CoreHealth'
 
@@ -94,6 +96,26 @@ const AppRoutes = () => {
           <ProtectedRoute>
             <Layout>
               <Tunnels />
+            </Layout>
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/mesh"
+        element={
+          <ProtectedRoute>
+            <Layout>
+              <Mesh />
+            </Layout>
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/overlay"
+        element={
+          <ProtectedRoute>
+            <Layout>
+              <Overlay />
             </Layout>
           </ProtectedRoute>
         }

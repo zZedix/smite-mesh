@@ -165,6 +165,9 @@ const Nodes = () => {
                 Status
               </th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                Overlay IP
+              </th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
                 Last Seen
               </th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
@@ -239,6 +242,15 @@ const Nodes = () => {
                       </span>
                     )
                   })()}
+                </td>
+                <td className="px-6 py-4 whitespace-nowrap">
+                  {node.metadata?.overlay_ip ? (
+                    <code className="text-sm text-blue-600 dark:text-blue-400 font-mono">
+                      {node.metadata.overlay_ip}
+                    </code>
+                  ) : (
+                    <span className="text-sm text-gray-400 dark:text-gray-500">Not assigned</span>
+                  )}
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
                   {new Date(node.last_seen).toLocaleString()}

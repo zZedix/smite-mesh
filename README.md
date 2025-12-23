@@ -97,10 +97,22 @@ Both certificates are available in the panel's `certs/` directory and can be dow
 
 > **Note**: Nodes are used for **Backhaul**, **Rathole**, **Chisel**, and **FRP** tunnels, providing easy reverse tunnel functionality. For GOST tunnels (TCP, UDP, WebSocket, gRPC, TCPMux), GOST runs on Iran nodes and forwards traffic to Foreign servers.
 
-### Architecture
+### Node Types
 
-- **Iran Nodes**: Act as servers in reverse tunnels (Rathole, Backhaul, Chisel, FRP) and run GOST forwarders
-- **Foreign Servers**: Act as clients in reverse tunnels and receive forwarded traffic from Iran nodes
+Smite uses a **dual-node architecture**:
+
+- **Iran Nodes**: 
+  - Act as servers in reverse tunnels (Rathole, Backhaul, Chisel, FRP)
+  - Run GOST forwarders
+  - Receive overlay IPs from IPAM
+  - Participate in WireGuard mesh
+  - Use `ca.crt` certificate (from Nodes tab)
+
+- **Foreign Servers**: 
+  - Act as clients in reverse tunnels
+  - Receive forwarded traffic from Iran nodes
+  - Do NOT receive overlay IPs
+  - Use `ca-server.crt` certificate (from Servers tab)
 
 ### Quick Install
 
@@ -109,11 +121,14 @@ sudo bash -c "$(curl -sL https://raw.githubusercontent.com/zZedix/Smite/main/scr
 ```
 
 The installer will prompt for:
-- Panel CA certificate path (use `ca.crt` for Iran nodes, `ca-server.crt` for Foreign servers)
 - Panel address (host:port)
+- Panel port (default: 8000)
 - Node API port (default: 8888)
 - Node name (default: node-1)
-- Node role (iran or foreign)
+- **Node role**: Choose `1` for Iran Node or `2` for Foreign Server
+- **CA Certificate**: Paste the appropriate certificate
+  - Iran nodes: Certificate from **Nodes** tab
+  - Foreign servers: Certificate from **Servers** tab
 
 ### Manual Install
 
@@ -125,9 +140,9 @@ cd node
 2. Copy Panel CA certificate:
 ```bash
 mkdir -p certs
-# For Iran nodes, use ca.crt
+# For Iran nodes, use ca.crt (from Nodes tab)
 cp /path/to/panel/ca.crt certs/ca.crt
-# For Foreign servers, use ca-server.crt
+# For Foreign servers, use ca-server.crt (from Servers tab)
 # cp /path/to/panel/ca-server.crt certs/ca.crt
 ```
 
@@ -136,17 +151,23 @@ cp /path/to/panel/ca.crt certs/ca.crt
 cat > .env << EOF
 NODE_API_PORT=8888
 NODE_NAME=node-1
+NODE_ROLE=iran
 PANEL_CA_PATH=/etc/smite-node/certs/ca.crt
 PANEL_ADDRESS=panel.example.com:443
+PANEL_API_PORT=8000
 EOF
 ```
 
-> **Note**: The panel validates node roles during registration. Each node must have a consistent role (iran or foreign) to prevent conflicts.
+> **Important**: Set `NODE_ROLE=iran` for Iran nodes or `NODE_ROLE=foreign` for Foreign servers. The panel validates node roles during registration.
 
 4. Start node:
 ```bash
 docker compose up -d
 ```
+
+### Detailed Installation Guide
+
+For comprehensive installation instructions, examples, and troubleshooting, see [INSTALLATION.md](INSTALLATION.md).
 
 ---
 

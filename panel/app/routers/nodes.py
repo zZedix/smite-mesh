@@ -95,6 +95,15 @@ async def create_node(node: NodeCreate, db: AsyncSession = Depends(get_db)):
     db.add(db_node)
     await db.commit()
     await db.refresh(db_node)
+    
+    from app.ipam_manager import ipam_manager
+    overlay_ip = await ipam_manager.allocate_ip(db, db_node.id)
+    if overlay_ip:
+        metadata["overlay_ip"] = overlay_ip
+        db_node.node_metadata = metadata
+        await db.commit()
+        await db.refresh(db_node)
+    
     return NodeResponse(
         id=db_node.id,
         name=db_node.name,

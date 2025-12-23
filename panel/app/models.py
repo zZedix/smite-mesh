@@ -72,3 +72,41 @@ class CoreResetConfig(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
+
+class WireGuardMesh(Base):
+    __tablename__ = "wireguard_mesh"
+    
+    id = Column(String, primary_key=True, default=generate_uuid)
+    name = Column(String, nullable=False)
+    topology = Column(String, nullable=False, default="full-mesh")
+    overlay_subnet = Column(String, nullable=False)
+    mtu = Column(Integer, default=1280)
+    status = Column(String, default="pending")
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    mesh_config = Column(JSON, default=dict)
+
+
+class OverlayPool(Base):
+    __tablename__ = "overlay_pool"
+    
+    id = Column(String, primary_key=True, default=generate_uuid)
+    cidr = Column(String, nullable=False, unique=True)
+    description = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class OverlayAssignment(Base):
+    __tablename__ = "overlay_assignment"
+    
+    id = Column(String, primary_key=True, default=generate_uuid)
+    node_id = Column(String, nullable=False, unique=True)
+    overlay_ip = Column(String, nullable=False, unique=True)
+    interface_name = Column(String, default="wg0")
+    assigned_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    
+    def __repr__(self):
+        return f"<OverlayAssignment(node_id={self.node_id}, overlay_ip={self.overlay_ip})>"
+
