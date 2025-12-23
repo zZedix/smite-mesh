@@ -48,11 +48,29 @@ class WireGuardAdapter:
     
     def apply(self, mesh_id: str, spec: Dict[str, Any]):
         """Apply WireGuard mesh configuration"""
-        if mesh_id in self.interfaces:
-            logger.info(f"WireGuard mesh {mesh_id} already exists, removing it first")
-            self.remove(mesh_id)
-        
         interface_name = self._get_interface_name(mesh_id)
+        
+        # Check if interface already exists and bring it down first
+        if self._interface_exists(interface_name):
+            logger.info(f"WireGuard interface {interface_name} already exists, bringing it down first")
+            try:
+                config_path = self.config_dir / f"{interface_name}.conf"
+                if config_path.exists():
+                    subprocess.run(
+                        [self.wg_quick_binary, "down", str(config_path)],
+                        check=False,
+                        capture_output=True
+                    )
+                else:
+                    # Interface exists but no config file, try to remove it directly
+                    subprocess.run(
+                        ["ip", "link", "delete", interface_name],
+                        check=False,
+                        capture_output=True
+                    )
+            except Exception as e:
+                logger.warning(f"Error bringing down existing interface: {e}")
+        
         config_path = self.config_dir / f"{interface_name}.conf"
         
         wg_config = spec.get("config")
@@ -82,16 +100,43 @@ class WireGuardAdapter:
         
         self._enable_ip_forwarding()
     
+    def _interface_exists(self, interface_name: str) -> bool:
+        """Check if WireGuard interface exists"""
+        try:
+            result = subprocess.run(
+                ["ip", "link", "show", interface_name],
+                capture_output=True,
+                check=False
+            )
+            return result.returncode == 0
+        except Exception:
+            return False
+    
     def _setup_routes(self, interface_name: str, routes: list):
         """Setup routes for remote LAN subnets"""
         for route in routes:
             try:
-                subprocess.run(
+                # Check if route already exists
+                result = subprocess.run(
+                    ["ip", "route", "show", route, "dev", interface_name],
+                    capture_output=True,
+                    check=False
+                )
+                if result.returncode == 0:
+                    logger.info(f"Route {route} already exists, skipping")
+                    continue
+                
+                # Add route if it doesn't exist
+                result = subprocess.run(
                     ["ip", "route", "add", route, "dev", interface_name],
                     check=False,
-                    capture_output=True
+                    capture_output=True,
+                    text=True
                 )
-                logger.info(f"Added route {route} via {interface_name}")
+                if result.returncode == 0:
+                    logger.info(f"Added route {route} via {interface_name}")
+                else:
+                    logger.warning(f"Failed to add route {route}: {result.stderr}")
             except Exception as e:
                 logger.warning(f"Failed to add route {route}: {e}")
     

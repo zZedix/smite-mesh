@@ -28,6 +28,9 @@ interface MeshStatus {
   nodes: Record<string, {
     active?: boolean
     interface?: string
+    lan_subnet?: string
+    node_name?: string
+    overlay_ip?: string
     peers?: Array<{
       public_key: string
       endpoint?: string
@@ -299,15 +302,15 @@ const Mesh = () => {
                   <div key={nodeId} className="border dark:border-gray-700 rounded-lg p-4">
                     <div className="flex justify-between items-center mb-2">
                       <h3 className="font-semibold text-gray-900 dark:text-white">
-                        {node?.name || nodeId}
+                        {nodeStatus.node_name || node?.name || nodeId}
                       </h3>
                       <span className={`px-2 py-1 rounded text-xs ${nodeStatus.active ? 'bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-200' : 'bg-red-100 dark:bg-red-900/30 text-red-800 dark:text-red-200'}`}>
                         {nodeStatus.active ? 'Active' : 'Inactive'}
                       </span>
                     </div>
-                    {nodeStatus.overlay_ip && (
+                    {nodeStatus.lan_subnet && (
                       <div className="text-sm text-gray-600 dark:text-gray-400 mb-2">
-                        Overlay IP: <code className="text-blue-600 dark:text-blue-400 font-mono">{nodeStatus.overlay_ip}</code>
+                        LAN Subnet: <code className="text-blue-600 dark:text-blue-400 font-mono">{nodeStatus.lan_subnet}</code>
                       </div>
                     )}
                     {nodeStatus.interface && (

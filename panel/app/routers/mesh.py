@@ -360,6 +360,20 @@ async def get_mesh_status(
             )
             node_data = response.get("data", {})
             
+            # Get node info
+            node_result = await db.execute(
+                select(Node).where(Node.id == node_id)
+            )
+            node = node_result.scalar_one_or_none()
+            
+            # Get LAN subnet from mesh config
+            node_config = mesh_configs.get(node_id, {})
+            if isinstance(node_config, dict):
+                lan_subnet = node_config.get("lan_subnet", "")
+                if lan_subnet:
+                    node_data["lan_subnet"] = lan_subnet
+                node_data["node_name"] = node.name if node else node_id
+            
             overlay_ip = await ipam_manager.get_node_ip(db, node_id)
             if overlay_ip:
                 node_data["overlay_ip"] = overlay_ip
