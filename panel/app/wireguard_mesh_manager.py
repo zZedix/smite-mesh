@@ -12,24 +12,30 @@ class WireGuardMeshManager:
     """Manages WireGuard mesh networks over Smite Backhaul"""
     
     def __init__(self):
-        self.wg_binary = self._resolve_wg_binary()
+        self._wg_binary = None
     
     def _resolve_wg_binary(self) -> Path:
-        """Resolve WireGuard binary path"""
+        """Resolve WireGuard binary path (lazy loading)"""
+        if self._wg_binary is not None:
+            return self._wg_binary
+        
         import shutil
         wg_path = shutil.which("wg")
         if wg_path:
-            return Path(wg_path)
+            self._wg_binary = Path(wg_path)
+            return self._wg_binary
         for path in [Path("/usr/bin/wg"), Path("/usr/local/bin/wg")]:
             if path.exists():
-                return path
-        raise FileNotFoundError("WireGuard 'wg' binary not found")
+                self._wg_binary = path
+                return self._wg_binary
+        raise FileNotFoundError("WireGuard 'wg' binary not found. Install wireguard-tools package.")
     
     def generate_keypair(self) -> Tuple[str, str]:
         """Generate WireGuard private/public key pair"""
+        wg_binary = self._resolve_wg_binary()
         try:
             private_key_proc = subprocess.run(
-                [str(self.wg_binary), "genkey"],
+                [str(wg_binary), "genkey"],
                 capture_output=True,
                 text=True,
                 check=True
@@ -37,7 +43,7 @@ class WireGuardMeshManager:
             private_key = private_key_proc.stdout.strip()
             
             public_key_proc = subprocess.run(
-                [str(self.wg_binary), "pubkey"],
+                [str(wg_binary), "pubkey"],
                 input=private_key,
                 capture_output=True,
                 text=True,

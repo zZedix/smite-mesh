@@ -3,6 +3,7 @@ RUN apt-get update && apt-get install -y \
     gcc \
     ca-certificates \
     git \
+    wireguard-tools \
     && rm -rf /var/lib/apt/lists/*
 
 FROM node:18-alpine AS frontend-build
