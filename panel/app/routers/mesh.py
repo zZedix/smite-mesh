@@ -358,7 +358,13 @@ async def get_mesh_status(
                 endpoint=f"/api/agent/mesh/{mesh_id}/status",
                 method="GET"
             )
-            node_statuses[node_id] = response.get("data", {})
+            node_data = response.get("data", {})
+            
+            overlay_ip = await ipam_manager.get_node_ip(db, node_id)
+            if overlay_ip:
+                node_data["overlay_ip"] = overlay_ip
+            
+            node_statuses[node_id] = node_data
         except Exception as e:
             logger.error(f"Error getting status from node {node_id}: {e}")
             node_statuses[node_id] = {"error": str(e)}

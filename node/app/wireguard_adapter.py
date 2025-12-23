@@ -137,10 +137,12 @@ class WireGuardAdapter:
             return {
                 "active": False,
                 "interface": None,
+                "overlay_ip": None,
                 "peers": []
             }
         
         interface_name = self.interfaces[mesh_id]
+        overlay_ip = self._get_interface_ip(interface_name)
         
         try:
             result = subprocess.run(
@@ -155,14 +157,40 @@ class WireGuardAdapter:
             return {
                 "active": True,
                 "interface": interface_name,
+                "overlay_ip": overlay_ip,
                 "peers": peers
             }
         except subprocess.CalledProcessError:
             return {
                 "active": False,
                 "interface": interface_name,
+                "overlay_ip": overlay_ip,
                 "peers": []
             }
+    
+    def _get_interface_ip(self, interface_name: str) -> Optional[str]:
+        """Get IP address assigned to WireGuard interface"""
+        try:
+            import shutil
+            ip_binary = shutil.which("ip") or "/usr/sbin/ip"
+            result = subprocess.run(
+                [ip_binary, "addr", "show", interface_name],
+                capture_output=True,
+                text=True,
+                check=True
+            )
+            
+            for line in result.stdout.splitlines():
+                if "inet " in line:
+                    parts = line.strip().split()
+                    for part in parts:
+                        if "/" in part and part.count('.') == 3:
+                            return part.split('/')[0]
+            
+            return None
+        except Exception as e:
+            logger.warning(f"Failed to get interface IP: {e}")
+            return None
     
     def _parse_wg_status(self, output: str) -> list:
         """Parse wg show output to extract peer information"""

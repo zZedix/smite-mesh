@@ -305,6 +305,11 @@ const Mesh = () => {
                         {nodeStatus.active ? 'Active' : 'Inactive'}
                       </span>
                     </div>
+                    {nodeStatus.overlay_ip && (
+                      <div className="text-sm text-gray-600 dark:text-gray-400 mb-2">
+                        Overlay IP: <code className="text-blue-600 dark:text-blue-400 font-mono">{nodeStatus.overlay_ip}</code>
+                      </div>
+                    )}
                     {nodeStatus.interface && (
                       <div className="text-sm text-gray-600 dark:text-gray-400 mb-2">
                         Interface: {nodeStatus.interface}
