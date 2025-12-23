@@ -59,6 +59,13 @@ async def get_tunnel_status(tunnel_id: str, request: Request):
     
     try:
         status = await adapter_manager.get_tunnel_status(tunnel_id)
+        
+        # For Backhaul tunnels, also check if process is actually running
+        tunnel = adapter_manager.active_tunnels.get(tunnel_id)
+        if tunnel and hasattr(tunnel, 'name') and tunnel.name == 'backhaul':
+            backhaul_status = tunnel.status(tunnel_id)
+            status.update(backhaul_status)
+        
         return {"status": "success", "data": status}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

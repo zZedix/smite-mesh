@@ -278,6 +278,7 @@ class BackhaulAdapter:
         )
         self.config_dir = Path(resolved_config)
         self.config_dir.mkdir(parents=True, exist_ok=True)
+        logger.info(f"BackhaulAdapter initialized with config_dir: {self.config_dir} (exists: {self.config_dir.exists()}, writable: {os.access(self.config_dir, os.W_OK) if self.config_dir.exists() else False})")
         self.processes: Dict[str, subprocess.Popen] = {}
         self.log_handles: Dict[str, Any] = {}
         default_binary = binary_path or Path(
@@ -345,13 +346,19 @@ class BackhaulAdapter:
                     server_config[key] = value
             
             config_path = self.config_dir / f"{tunnel_id}.toml"
-            config_path.write_text(self._render_toml({"server": server_config}), encoding="utf-8")
+            config_content = self._render_toml({"server": server_config})
+            config_path.write_text(config_content, encoding="utf-8")
+            logger.info(f"Backhaul server config written to {config_path}")
             
             binary_path = self._resolve_binary_path()
+            logger.info(f"Using Backhaul binary: {binary_path}")
             log_path = self.config_dir / f"backhaul_{tunnel_id}.log"
             log_fh = log_path.open("w", buffering=1)
             log_fh.write(f"Starting Backhaul server for tunnel {tunnel_id}\n")
-            log_fh.write(self._render_toml({"server": server_config}))
+            log_fh.write(f"Config path: {config_path}\n")
+            log_fh.write(f"Binary path: {binary_path}\n")
+            log_fh.write(f"Working directory: {self.config_dir}\n")
+            log_fh.write(config_content)
             log_fh.flush()
             
             try:
@@ -362,8 +369,10 @@ class BackhaulAdapter:
                     cwd=str(self.config_dir),
                     start_new_session=True,
                 )
-            except Exception:
+                logger.info(f"Backhaul server process started with PID: {proc.pid}")
+            except Exception as e:
                 log_fh.close()
+                logger.error(f"Failed to start Backhaul server: {e}", exc_info=True)
                 raise
         else:
             remote_addr = spec.get("remote_addr") or spec.get("control_addr") or spec.get("bind_addr")
@@ -408,16 +417,21 @@ class BackhaulAdapter:
                 config_dict["accept_udp"] = True
 
             config_path = self.config_dir / f"{tunnel_id}.toml"
-            config_path.write_text(self._render_toml({"client": config_dict}), encoding="utf-8")
-
+            config_content = self._render_toml({"client": config_dict})
+            config_path.write_text(config_content, encoding="utf-8")
+            logger.info(f"Backhaul client config written to {config_path}")
+            
             binary_path = self._resolve_binary_path()
-
+            logger.info(f"Using Backhaul binary: {binary_path}")
             log_path = self.config_dir / f"backhaul_{tunnel_id}.log"
             log_fh = log_path.open("w", buffering=1)
             log_fh.write(f"Starting Backhaul client for tunnel {tunnel_id}\n")
-            log_fh.write(self._render_toml({"client": config_dict}))
+            log_fh.write(f"Config path: {config_path}\n")
+            log_fh.write(f"Binary path: {binary_path}\n")
+            log_fh.write(f"Working directory: {self.config_dir}\n")
+            log_fh.write(config_content)
             log_fh.flush()
-
+            
             try:
                 proc = subprocess.Popen(
                     [str(binary_path), "-c", str(config_path)],
@@ -426,22 +440,31 @@ class BackhaulAdapter:
                     cwd=str(self.config_dir),
                     start_new_session=True,
                 )
-            except Exception:
+                logger.info(f"Backhaul client process started with PID: {proc.pid}")
+            except Exception as e:
                 log_fh.close()
+                logger.error(f"Failed to start Backhaul client: {e}", exc_info=True)
                 raise
 
-        time.sleep(0.5)
+        time.sleep(1.0)
         if proc.poll() is not None:
             error_output = ""
             try:
-                error_output = log_path.read_text(encoding="utf-8")[-1000:]
+                if log_path.exists():
+                    error_output = log_path.read_text(encoding="utf-8")[-2000:]
+                else:
+                    error_output = "Log file not created - process may have failed immediately"
+            except Exception as e:
+                error_output = f"Failed to read log: {e}"
+            try:
+                log_fh.close()
             except Exception:
                 pass
-            log_fh.close()
             raise RuntimeError(f"backhaul failed to start: {error_output}")
 
         self.processes[tunnel_id] = proc
         self.log_handles[tunnel_id] = log_fh
+        logger.info(f"Backhaul tunnel {tunnel_id} started successfully (PID: {proc.pid}, mode: {mode})")
 
     def remove(self, tunnel_id: str):
         config_path = self.config_dir / f"{tunnel_id}.toml"
@@ -472,12 +495,42 @@ class BackhaulAdapter:
     def status(self, tunnel_id: str) -> Dict[str, Any]:
         config_path = self.config_dir / f"{tunnel_id}.toml"
         proc = self.processes.get(tunnel_id)
-        is_running = proc is not None and proc.poll() is None
+        is_running = False
+        pid = None
+        exit_code = None
+        
+        if proc is not None:
+            pid = proc.pid
+            exit_code = proc.poll()
+            is_running = exit_code is None
+        
+        # Also check if process is actually running by PID
+        actually_running = False
+        if pid:
+            try:
+                import psutil
+                p = psutil.Process(pid)
+                actually_running = p.is_running()
+            except (psutil.NoSuchProcess, psutil.AccessDenied):
+                actually_running = False
+        
+        log_path = self.config_dir / f"backhaul_{tunnel_id}.log"
+        log_tail = ""
+        if log_path.exists():
+            try:
+                log_tail = log_path.read_text(encoding="utf-8")[-500:]
+            except Exception:
+                pass
+        
         return {
             "active": config_path.exists() and is_running,
             "type": "backhaul",
             "config_exists": config_path.exists(),
             "process_running": is_running,
+            "actually_running": actually_running,
+            "pid": pid,
+            "exit_code": exit_code,
+            "log_tail": log_tail,
         }
 
     def _render_toml(self, data: Dict[str, Dict[str, Any]]) -> str:
