@@ -49,34 +49,40 @@ class WireGuardAdapter:
     def apply(self, mesh_id: str, spec: Dict[str, Any]):
         """Apply WireGuard mesh configuration"""
         interface_name = self._get_interface_name(mesh_id)
-        
-        # Check if interface already exists and bring it down first
-        if self._interface_exists(interface_name):
-            logger.info(f"WireGuard interface {interface_name} already exists, bringing it down first")
-            try:
-                config_path = self.config_dir / f"{interface_name}.conf"
-                if config_path.exists():
-                    subprocess.run(
-                        [self.wg_quick_binary, "down", str(config_path)],
-                        check=False,
-                        capture_output=True
-                    )
-                else:
-                    # Interface exists but no config file, try to remove it directly
-                    subprocess.run(
-                        ["ip", "link", "delete", interface_name],
-                        check=False,
-                        capture_output=True
-                    )
-            except Exception as e:
-                logger.warning(f"Error bringing down existing interface: {e}")
-        
         config_path = self.config_dir / f"{interface_name}.conf"
         
         wg_config = spec.get("config")
         if not wg_config:
             raise ValueError("WireGuard config is required in spec")
         
+        # Check if interface already exists and bring it down first
+        if self._interface_exists(interface_name):
+            logger.info(f"WireGuard interface {interface_name} already exists, bringing it down first")
+            try:
+                if config_path.exists():
+                    subprocess.run(
+                        [self.wg_quick_binary, "down", str(config_path)],
+                        check=False,
+                        capture_output=True,
+                        timeout=5
+                    )
+                else:
+                    # Interface exists but no config file, try to remove it directly
+                    subprocess.run(
+                        ["ip", "link", "delete", interface_name],
+                        check=False,
+                        capture_output=True,
+                        timeout=5
+                    )
+            except Exception as e:
+                logger.warning(f"Error bringing down existing interface: {e}")
+        
+        # Extract AllowedIPs from config and clean up any existing routes
+        allowed_ips = self._extract_allowed_ips(wg_config)
+        for ip in allowed_ips:
+            self._remove_route(ip)
+        
+        # Write config file
         config_path.write_text(wg_config, encoding="utf-8")
         os.chmod(config_path, 0o600)
         
@@ -85,7 +91,8 @@ class WireGuardAdapter:
                 [self.wg_quick_binary, "up", str(config_path)],
                 check=True,
                 capture_output=True,
-                text=True
+                text=True,
+                timeout=10
             )
             logger.info(f"WireGuard interface {interface_name} brought up for mesh {mesh_id}")
         except subprocess.CalledProcessError as e:
@@ -99,6 +106,34 @@ class WireGuardAdapter:
             self._setup_routes(interface_name, routes)
         
         self._enable_ip_forwarding()
+    
+    def _extract_allowed_ips(self, wg_config: str) -> list:
+        """Extract AllowedIPs from WireGuard config"""
+        allowed_ips = []
+        for line in wg_config.splitlines():
+            line = line.strip()
+            if line.startswith("AllowedIPs"):
+                # Extract IPs after = sign
+                ips_str = line.split("=", 1)[1].strip() if "=" in line else ""
+                # Split by comma and clean up
+                for ip in ips_str.split(","):
+                    ip = ip.strip()
+                    if ip:
+                        allowed_ips.append(ip)
+        return allowed_ips
+    
+    def _remove_route(self, route: str):
+        """Remove a route if it exists"""
+        try:
+            # Try to remove the route (ignore if it doesn't exist)
+            subprocess.run(
+                ["ip", "route", "del", route],
+                check=False,
+                capture_output=True,
+                timeout=2
+            )
+        except Exception as e:
+            logger.debug(f"Could not remove route {route}: {e}")
     
     def _interface_exists(self, interface_name: str) -> bool:
         """Check if WireGuard interface exists"""
