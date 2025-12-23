@@ -472,6 +472,25 @@ class BackhaulAdapter:
 
         self.processes[tunnel_id] = proc
         self.log_handles[tunnel_id] = log_fh
+        
+        # Verify process is still running after a short delay
+        time.sleep(0.5)
+        if proc.poll() is not None:
+            error_output = ""
+            try:
+                if log_path.exists():
+                    error_output = log_path.read_text(encoding="utf-8")[-2000:]
+            except Exception as e:
+                error_output = f"Failed to read log: {e}"
+            logger.error(f"Backhaul process {proc.pid} exited immediately after start. Exit code: {proc.poll()}, Log: {error_output}")
+            try:
+                log_fh.close()
+            except Exception:
+                pass
+            del self.processes[tunnel_id]
+            del self.log_handles[tunnel_id]
+            raise RuntimeError(f"backhaul process exited immediately after start (exit code: {proc.poll()}): {error_output}")
+        
         logger.info(f"Backhaul tunnel {tunnel_id} started successfully (PID: {proc.pid}, mode: {mode})")
 
     def remove(self, tunnel_id: str):
