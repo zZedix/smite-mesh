@@ -90,9 +90,7 @@ async def delete_pool(db: AsyncSession = Depends(get_db)):
     if not pool:
         raise HTTPException(status_code=404, detail="No overlay pool found")
     
-    assignments_result = await db.execute(
-        select(OverlayAssignment).where(OverlayAssignment.pool_id == pool.id)
-    )
+    assignments_result = await db.execute(select(OverlayAssignment))
     assignments = assignments_result.scalars().all()
     
     for assignment in assignments:

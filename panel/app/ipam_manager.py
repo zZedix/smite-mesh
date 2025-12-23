@@ -101,8 +101,7 @@ class IPAMManager:
         assignment = OverlayAssignment(
             node_id=node_id,
             overlay_ip=allocated_ip,
-            interface_name=interface_name,
-            pool_id=pool.id
+            interface_name=interface_name
         )
         db.add(assignment)
         
