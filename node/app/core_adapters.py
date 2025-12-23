@@ -423,6 +423,8 @@ class BackhaulAdapter:
                     [str(binary_path), "-c", str(config_path)],
                     stdout=log_fh,
                     stderr=subprocess.STDOUT,
+                    cwd=str(self.config_dir),
+                    start_new_session=True,
                 )
             except Exception:
                 log_fh.close()
