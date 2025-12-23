@@ -174,6 +174,8 @@ async def apply_mesh(
     if not mesh_configs:
         raise HTTPException(status_code=400, detail="Mesh node configuration not found")
     
+    logger.info(f"Applying mesh {mesh_id} with transport={transport}, nodes={list(mesh_configs.keys())}")
+    
     node_client = NodeClient()
     backhaul_endpoints = {}
     
@@ -190,14 +192,21 @@ async def apply_mesh(
         
         node_endpoints = {}
         for trans in transports_to_create:
+            logger.info(f"Ensuring Backhaul {trans} tunnel for node {node_id} in mesh {mesh_id}")
             backhaul_endpoint = await _ensure_backhaul_tunnel(
                 mesh_id, node_id, node, node_config, db, request, node_client, trans
             )
             if backhaul_endpoint:
+                logger.info(f"Backhaul {trans} endpoint for node {node_id}: {backhaul_endpoint}")
                 node_endpoints[trans] = backhaul_endpoint
+            else:
+                logger.warning(f"Failed to create Backhaul {trans} tunnel for node {node_id}")
         
         if node_endpoints:
             backhaul_endpoints[node_id] = node_endpoints
+            logger.info(f"Node {node_id} has {len(node_endpoints)} backhaul endpoints: {list(node_endpoints.keys())}")
+        else:
+            logger.error(f"Node {node_id} has no backhaul endpoints!")
     
     for node_id, node_config in mesh_configs.items():
         if node_id not in backhaul_endpoints:
@@ -290,6 +299,25 @@ async def _ensure_backhaul_tunnel(
             await db.delete(existing_tunnel)
             await db.commit()
         elif existing_public:
+            # Existing tunnel found, but ensure it's applied to the node
+            logger.info(f"Found existing Backhaul tunnel {existing_tunnel.id} for node {node_id}, ensuring it's applied")
+            try:
+                response = await node_client.send_to_node(
+                    node_id=node_id,
+                    endpoint="/api/agent/tunnels/apply",
+                    data={
+                        "tunnel_id": existing_tunnel.id,
+                        "core": "backhaul",
+                        "type": transport,
+                        "spec": existing_tunnel.spec
+                    }
+                )
+                if response.get("status") == "error":
+                    logger.error(f"Failed to apply existing backhaul tunnel {existing_tunnel.id} to node {node_id}: {response.get('message')}")
+                else:
+                    logger.info(f"Successfully applied existing Backhaul tunnel {existing_tunnel.id} to node {node_id}")
+            except Exception as e:
+                logger.error(f"Error applying existing backhaul tunnel {existing_tunnel.id} to node {node_id}: {e}", exc_info=True)
             return f"{node_ip}:{existing_public}"
         elif existing_control:
             # Old tunnel without public_port, delete and recreate
@@ -338,6 +366,7 @@ async def _ensure_backhaul_tunnel(
     await db.refresh(tunnel)
     
     try:
+        logger.info(f"Applying Backhaul tunnel {tunnel.id} to node {node_id} ({node_ip})")
         response = await node_client.send_to_node(
             node_id=node_id,
             endpoint="/api/agent/tunnels/apply",
@@ -349,10 +378,11 @@ async def _ensure_backhaul_tunnel(
             }
         )
         if response.get("status") == "error":
-            logger.error(f"Failed to create backhaul tunnel: {response.get('message')}")
+            logger.error(f"Failed to create backhaul tunnel {tunnel.id} on node {node_id}: {response.get('message')}")
             return None
+        logger.info(f"Successfully applied Backhaul tunnel {tunnel.id} to node {node_id}, endpoint: {node_ip}:{public_port}")
     except Exception as e:
-        logger.error(f"Error creating backhaul tunnel: {e}", exc_info=True)
+        logger.error(f"Error creating backhaul tunnel {tunnel.id} on node {node_id}: {e}", exc_info=True)
         return None
     
     return f"{node_ip}:{public_port}"
