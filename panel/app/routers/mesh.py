@@ -356,7 +356,7 @@ async def get_mesh_status(
             response = await node_client.send_to_node(
                 node_id=node_id,
                 endpoint=f"/api/agent/mesh/{mesh_id}/status",
-                data={}
+                method="GET"
             )
             node_statuses[node_id] = response.get("data", {})
         except Exception as e:

@@ -15,7 +15,7 @@ class NodeClient:
     def __init__(self):
         self.timeout = httpx.Timeout(30.0)
     
-    async def send_to_node(self, node_id: str, endpoint: str, data: Dict[str, Any]) -> Dict[str, Any]:
+    async def send_to_node(self, node_id: str, endpoint: str, data: Dict[str, Any] = None, method: str = "POST") -> Dict[str, Any]:
         """
         Send request to node via HTTPS
         """
@@ -35,7 +35,10 @@ class NodeClient:
             
             try:
                 async with httpx.AsyncClient(timeout=self.timeout, verify=False) as client:
-                    response = await client.post(url, json=data)
+                    if method.upper() == "GET":
+                        response = await client.get(url, params=data or {})
+                    else:
+                        response = await client.post(url, json=data or {})
                     response.raise_for_status()
                     return response.json()
             except httpx.RequestError as e:

@@ -53,7 +53,7 @@ class WireGuardAdapter:
             self.remove(mesh_id)
         
         interface_name = self._get_interface_name(mesh_id)
-        config_path = self.config_dir / f"{mesh_id}.conf"
+        config_path = self.config_dir / f"{interface_name}.conf"
         
         wg_config = spec.get("config")
         if not wg_config:
@@ -110,7 +110,7 @@ class WireGuardAdapter:
             return
         
         interface_name = self.interfaces[mesh_id]
-        config_path = self.config_dir / f"{mesh_id}.conf"
+        config_path = self.config_dir / f"{interface_name}.conf"
         
         try:
             if config_path.exists():
