@@ -280,21 +280,28 @@ async def _ensure_backhaul_tunnel(
         return None
     
     if existing_tunnel:
-        control_port = existing_tunnel.spec.get("control_port") or existing_tunnel.spec.get("listen_port")
-        if control_port:
-            return f"{node_ip}:{control_port}"
+        # Return public_port (what WireGuard connects to), not control_port
+        public_port = existing_tunnel.spec.get("public_port") or existing_tunnel.spec.get("listen_port")
+        if public_port:
+            return f"{node_ip}:{public_port}"
     
     port_hash = int(hashlib.md5(f"{mesh_id}-{node_id}-{transport}".encode()).hexdigest()[:8], 16)
     base_port = 3080 if transport == "udp" else 4080
     control_port = base_port + (port_hash % 1000)
+    # Public port must be DIFFERENT from control port
+    # Target port should be the same as public port
+    # Add fixed offset to ensure public_port is always different from control_port
+    public_port = control_port + 5000  # Fixed offset ensures they're always different
     
     spec = {
         "mode": "server",
         "transport": transport,
         "bind_addr": f"0.0.0.0:{control_port}",
         "control_port": control_port,
-        "listen_port": control_port,
-        "ports": [str(control_port)]
+        "public_port": public_port,
+        "target_host": "127.0.0.1",
+        "target_port": public_port,  # Same as public port
+        "ports": [f"{public_port}=127.0.0.1:{public_port}"]
     }
     
     tunnel = Tunnel(
@@ -327,7 +334,7 @@ async def _ensure_backhaul_tunnel(
         logger.error(f"Error creating backhaul tunnel: {e}", exc_info=True)
         return None
     
-    return f"{node_ip}:{control_port}"
+    return f"{node_ip}:{public_port}"
 
 
 @router.get("/{mesh_id}/status")
