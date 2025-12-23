@@ -12,6 +12,7 @@ RUN apt-get update && apt-get install -y \
     gzip \
     ca-certificates \
     wireguard-tools \
+    iproute2 \
     && rm -rf /var/lib/apt/lists/*
 
 # Stage 2: Install rathole (cached layer)
