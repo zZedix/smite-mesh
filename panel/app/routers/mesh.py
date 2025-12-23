@@ -280,18 +280,37 @@ async def _ensure_backhaul_tunnel(
         return None
     
     if existing_tunnel:
-        # Return public_port (what WireGuard connects to), not control_port
-        public_port = existing_tunnel.spec.get("public_port") or existing_tunnel.spec.get("listen_port")
-        if public_port:
-            return f"{node_ip}:{public_port}"
+        # Check if existing tunnel has correct port separation
+        existing_control = existing_tunnel.spec.get("control_port") or existing_tunnel.spec.get("listen_port")
+        existing_public = existing_tunnel.spec.get("public_port")
+        
+        # If ports are the same (old bug), delete and recreate
+        if existing_control and existing_public and existing_control == existing_public:
+            logger.warning(f"Existing tunnel {existing_tunnel.id} has conflicting ports, deleting and recreating")
+            await db.delete(existing_tunnel)
+            await db.commit()
+        elif existing_public:
+            return f"{node_ip}:{existing_public}"
+        elif existing_control:
+            # Old tunnel without public_port, delete and recreate
+            logger.warning(f"Existing tunnel {existing_tunnel.id} missing public_port, deleting and recreating")
+            await db.delete(existing_tunnel)
+            await db.commit()
     
     port_hash = int(hashlib.md5(f"{mesh_id}-{node_id}-{transport}".encode()).hexdigest()[:8], 16)
     base_port = 3080 if transport == "udp" else 4080
     control_port = base_port + (port_hash % 1000)
     # Public port must be DIFFERENT from control port
     # Target port should be the same as public port
-    # Add fixed offset to ensure public_port is always different from control_port
-    public_port = control_port + 5000  # Fixed offset ensures they're always different
+    # Use a different base to ensure they're always in different ranges
+    public_port = (base_port + 2000) + (port_hash % 1000)  # Different range from control_port
+    
+    # Ensure public_port is definitely different from control_port
+    while public_port == control_port:
+        public_port = control_port + 1000 + (port_hash % 100)
+    
+    # Final safety check
+    assert public_port != control_port, f"Port conflict: control_port={control_port}, public_port={public_port}"
     
     spec = {
         "mode": "server",
@@ -303,6 +322,8 @@ async def _ensure_backhaul_tunnel(
         "target_port": public_port,  # Same as public port
         "ports": [f"{public_port}=127.0.0.1:{public_port}"]
     }
+    
+    logger.info(f"Creating Backhaul tunnel: control_port={control_port}, public_port={public_port}, target_port={public_port}")
     
     tunnel = Tunnel(
         name=tunnel_name,
