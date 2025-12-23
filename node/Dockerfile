@@ -11,6 +11,7 @@ RUN apt-get update && apt-get install -y \
     unzip \
     gzip \
     ca-certificates \
+    wireguard-tools \
     && rm -rf /var/lib/apt/lists/*
 
 # Stage 2: Install rathole (cached layer)
