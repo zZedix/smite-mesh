@@ -1,6 +1,6 @@
 import { ReactNode, useState, useEffect } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
-import { LayoutDashboard, Network, FileText, Activity, Moon, Sun, Github, Menu, X, LogOut, Settings, Heart, Globe, Network2 } from 'lucide-react'
+import { LayoutDashboard, Network, FileText, Activity, Moon, Sun, Github, Menu, X, LogOut, Settings, Heart, Globe, Share2, Layers } from 'lucide-react'
 import { useAuth } from '../contexts/AuthContext'
 import SmiteLogoDark from '../assets/SmiteD.png'
 import SmiteLogoLight from '../assets/SmiteL.png'
@@ -51,8 +51,8 @@ const Layout = ({ children }: LayoutProps) => {
     { path: '/nodes', label: 'Nodes', icon: Network },
     { path: '/servers', label: 'Servers', icon: Globe },
     { path: '/tunnels', label: 'Tunnels', icon: Activity },
-    { path: '/mesh', label: 'WireGuard Mesh', icon: Network2 },
-    { path: '/overlay', label: 'Overlay IP', icon: Network2 },
+    { path: '/mesh', label: 'WireGuard Mesh', icon: Share2 },
+    { path: '/overlay', label: 'Overlay IP', icon: Layers },
     { path: '/core-health', label: 'Core Health', icon: Heart },
     { path: '/logs', label: 'Logs', icon: FileText },
   ]
