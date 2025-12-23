@@ -101,13 +101,25 @@ class IPAMManager:
         assignment = OverlayAssignment(
             node_id=node_id,
             overlay_ip=allocated_ip,
-            interface_name=interface_name
+            interface_name=interface_name,
+            pool_id=pool.id
         )
         db.add(assignment)
-        await db.commit()
-        await db.refresh(assignment)
         
-        logger.info(f"Allocated overlay IP {allocated_ip} to node {node_id}")
+        node_result = await db.execute(select(Node).where(Node.id == node_id))
+        node = node_result.scalar_one_or_none()
+        if node:
+            if not node.node_metadata:
+                node.node_metadata = {}
+            node.node_metadata["overlay_ip"] = allocated_ip
+            await db.commit()
+            await db.refresh(assignment)
+            logger.info(f"Allocated overlay IP {allocated_ip} to node {node_id} and updated node_metadata")
+        else:
+            await db.commit()
+            await db.refresh(assignment)
+            logger.info(f"Allocated overlay IP {allocated_ip} to node {node_id}")
+        
         return allocated_ip
     
     async def _find_free_ip(self, db: AsyncSession, network: ipaddress.IPv4Network) -> Optional[str]:

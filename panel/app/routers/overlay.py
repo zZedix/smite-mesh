@@ -83,6 +83,32 @@ async def get_pool(db: AsyncSession = Depends(get_db)):
     return pool
 
 
+@router.delete("/pool")
+async def delete_pool(db: AsyncSession = Depends(get_db)):
+    """Delete overlay IP pool and all assignments"""
+    pool = await ipam_manager.get_pool(db)
+    if not pool:
+        raise HTTPException(status_code=404, detail="No overlay pool found")
+    
+    assignments_result = await db.execute(
+        select(OverlayAssignment).where(OverlayAssignment.pool_id == pool.id)
+    )
+    assignments = assignments_result.scalars().all()
+    
+    for assignment in assignments:
+        node_result = await db.execute(select(Node).where(Node.id == assignment.node_id))
+        node = node_result.scalar_one_or_none()
+        if node and node.node_metadata:
+            node.node_metadata.pop("overlay_ip", None)
+            await db.commit()
+        await db.delete(assignment)
+    
+    await db.delete(pool)
+    await db.commit()
+    
+    return {"status": "success", "message": "Pool and all assignments deleted"}
+
+
 @router.post("/assign/{node_id}")
 async def assign_ip(
     node_id: str,
@@ -105,6 +131,12 @@ async def assign_ip(
     
     if not allocated_ip:
         raise HTTPException(status_code=500, detail="Failed to allocate IP. Pool may be exhausted.")
+    
+    node_result = await db.execute(select(Node).where(Node.id == node_id))
+    node = node_result.scalar_one_or_none()
+    if node and node.node_metadata:
+        node.node_metadata["overlay_ip"] = allocated_ip
+        await db.commit()
     
     node_client = NodeClient()
     try:
@@ -233,5 +265,47 @@ async def get_node_ip(
         "node_id": node_id,
         "overlay_ip": ip,
         "interface_name": assignment.interface_name if assignment else "wg0"
+    }
+
+
+@router.post("/sync")
+async def sync_node_ips(db: AsyncSession = Depends(get_db)):
+    """Sync overlay IPs to all nodes that don't have them assigned"""
+    pool = await ipam_manager.get_pool(db)
+    if not pool:
+        raise HTTPException(status_code=404, detail="No overlay pool configured")
+    
+    nodes_result = await db.execute(select(Node))
+    nodes = nodes_result.scalars().all()
+    
+    synced = 0
+    errors = []
+    
+    for node in nodes:
+        existing_assignment = await db.execute(
+            select(OverlayAssignment).where(OverlayAssignment.node_id == node.id)
+        )
+        assignment = existing_assignment.scalar_one_or_none()
+        
+        if not assignment:
+            overlay_ip = await ipam_manager.allocate_ip(db, node.id)
+            if overlay_ip:
+                synced += 1
+                logger.info(f"Synced overlay IP {overlay_ip} to node {node.id}")
+            else:
+                errors.append(f"Failed to allocate IP for node {node.id}")
+        else:
+            if node.node_metadata and node.node_metadata.get("overlay_ip") != assignment.overlay_ip:
+                if not node.node_metadata:
+                    node.node_metadata = {}
+                node.node_metadata["overlay_ip"] = assignment.overlay_ip
+                await db.commit()
+                synced += 1
+                logger.info(f"Synced overlay IP {assignment.overlay_ip} to node {node.id} metadata")
+    
+    return {
+        "status": "success",
+        "synced": synced,
+        "errors": errors
     }
 

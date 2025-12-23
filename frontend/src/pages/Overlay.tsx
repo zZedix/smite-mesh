@@ -63,6 +63,30 @@ const Overlay = () => {
     }
   }
 
+  const handleDeletePool = async () => {
+    if (!confirm('Are you sure you want to delete the overlay pool? This will remove all IP assignments.')) {
+      return
+    }
+    try {
+      await api.delete('/overlay/pool')
+      fetchData()
+    } catch (error: any) {
+      console.error('Failed to delete pool:', error)
+      alert(error.response?.data?.detail || 'Failed to delete pool')
+    }
+  }
+
+  const handleSyncIPs = async () => {
+    try {
+      const response = await api.post('/overlay/sync')
+      alert(`Synced ${response.data.synced} nodes. ${response.data.errors.length > 0 ? 'Errors: ' + response.data.errors.join(', ') : ''}`)
+      fetchData()
+    } catch (error: any) {
+      console.error('Failed to sync IPs:', error)
+      alert(error.response?.data?.detail || 'Failed to sync IPs')
+    }
+  }
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -107,12 +131,20 @@ const Overlay = () => {
                   {poolStatus.cidr} {poolStatus.description && `• ${poolStatus.description}`}
                 </p>
               </div>
-              {poolStatus.exhausted && (
-                <div className="flex items-center gap-2 px-3 py-1 bg-red-100 dark:bg-red-900/30 text-red-800 dark:text-red-200 rounded-full text-sm">
-                  <AlertTriangle size={16} />
-                  Pool Exhausted
-                </div>
-              )}
+              <div className="flex items-center gap-2">
+                {poolStatus.exhausted && (
+                  <div className="flex items-center gap-2 px-3 py-1 bg-red-100 dark:bg-red-900/30 text-red-800 dark:text-red-200 rounded-full text-sm">
+                    <AlertTriangle size={16} />
+                    Pool Exhausted
+                  </div>
+                )}
+                <button
+                  onClick={handleDeletePool}
+                  className="px-3 py-1 text-sm bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
+                >
+                  Delete Pool
+                </button>
+              </div>
             </div>
 
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-4">
@@ -149,8 +181,14 @@ const Overlay = () => {
           </div>
 
           <div className="bg-white dark:bg-gray-800 rounded-lg shadow overflow-hidden">
-            <div className="px-6 py-4 border-b border-gray-200 dark:border-gray-700">
+            <div className="px-6 py-4 border-b border-gray-200 dark:border-gray-700 flex justify-between items-center">
               <h2 className="text-xl font-semibold text-gray-900 dark:text-white">IP Assignments</h2>
+              <button
+                onClick={handleSyncIPs}
+                className="px-4 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+              >
+                Sync IPs to All Nodes
+              </button>
             </div>
             <div className="overflow-x-auto">
               <table className="w-full">
