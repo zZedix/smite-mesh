@@ -277,8 +277,16 @@ class BackhaulAdapter:
             os.environ.get("SMITE_BACKHAUL_CLIENT_DIR", "/etc/smite-node/backhaul")
         )
         self.config_dir = Path(resolved_config)
-        self.config_dir.mkdir(parents=True, exist_ok=True)
-        logger.info(f"BackhaulAdapter initialized with config_dir: {self.config_dir} (exists: {self.config_dir.exists()}, writable: {os.access(self.config_dir, os.W_OK) if self.config_dir.exists() else False})")
+        try:
+            self.config_dir.mkdir(parents=True, exist_ok=True)
+            if not self.config_dir.exists():
+                raise RuntimeError(f"Failed to create Backhaul config directory: {self.config_dir}")
+            if not os.access(self.config_dir, os.W_OK):
+                raise RuntimeError(f"Backhaul config directory is not writable: {self.config_dir}")
+            logger.info(f"BackhaulAdapter initialized with config_dir: {self.config_dir} (exists: {self.config_dir.exists()}, writable: {os.access(self.config_dir, os.W_OK)})")
+        except Exception as e:
+            logger.error(f"Failed to initialize Backhaul config directory {self.config_dir}: {e}", exc_info=True)
+            raise
         self.processes: Dict[str, subprocess.Popen] = {}
         self.log_handles: Dict[str, Any] = {}
         default_binary = binary_path or Path(
