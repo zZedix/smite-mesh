@@ -318,7 +318,8 @@ async def _ensure_backhaul_tunnel(
                     logger.info(f"Successfully applied existing Backhaul tunnel {existing_tunnel.id} to node {node_id}")
             except Exception as e:
                 logger.error(f"Error applying existing backhaul tunnel {existing_tunnel.id} to node {node_id}: {e}", exc_info=True)
-            return f"{node_ip}:{existing_public}"
+            # WireGuard should connect to control_port (where Backhaul listens), not public_port
+            return f"{node_ip}:{existing_control}" if existing_control else f"{node_ip}:{existing_public}"
         elif existing_control:
             # Old tunnel without public_port, delete and recreate
             logger.warning(f"Existing tunnel {existing_tunnel.id} missing public_port, deleting and recreating")
@@ -380,12 +381,13 @@ async def _ensure_backhaul_tunnel(
         if response.get("status") == "error":
             logger.error(f"Failed to create backhaul tunnel {tunnel.id} on node {node_id}: {response.get('message')}")
             return None
-        logger.info(f"Successfully applied Backhaul tunnel {tunnel.id} to node {node_id}, endpoint: {node_ip}:{public_port}")
+        logger.info(f"Successfully applied Backhaul tunnel {tunnel.id} to node {node_id}, endpoint: {node_ip}:{control_port}")
     except Exception as e:
         logger.error(f"Error creating backhaul tunnel {tunnel.id} on node {node_id}: {e}", exc_info=True)
         return None
     
-    return f"{node_ip}:{public_port}"
+    # WireGuard should connect to control_port (where Backhaul server listens), not public_port
+    return f"{node_ip}:{control_port}"
 
 
 @router.get("/{mesh_id}/status")
