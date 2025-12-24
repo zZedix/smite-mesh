@@ -20,9 +20,23 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
+def _enable_ip_forwarding():
+    """Enable IPv4 forwarding at startup"""
+    try:
+        with open("/proc/sys/net/ipv4/ip_forward", "w") as f:
+            f.write("1")
+        logger.info("IPv4 forwarding enabled at startup")
+    except Exception as e:
+        logger.warning(f"Failed to enable IPv4 forwarding at startup: {e}")
+        logger.warning("IP forwarding may need to be enabled on the host system")
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Startup and shutdown events"""
+    # Enable IP forwarding at startup (required for mesh networking)
+    _enable_ip_forwarding()
+    
     h2_client = PanelClient()
     try:
         await h2_client.start()

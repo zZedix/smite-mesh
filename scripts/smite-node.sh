@@ -247,8 +247,10 @@ fi
 # Pull or build Docker image
 echo ""
 echo "Pulling Docker image from GitHub Container Registry..."
+# Set version (default to main, can be overridden with SMITE_VERSION env var)
+# The workflow publishes images with 'main' tag when pushing to main branch
 if [ -z "${SMITE_VERSION}" ]; then
-    export SMITE_VERSION=latest
+    export SMITE_VERSION=main
 fi
 
 if docker pull ghcr.io/zzedix/sm-node:${SMITE_VERSION} 2>/dev/null; then
