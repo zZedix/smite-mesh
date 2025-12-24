@@ -3,7 +3,7 @@
 
 services:
   sm-node:
-    image: ghcr.io/zzedix/sm-node:${SMITE_VERSION:-latest}
+    image: ghcr.io/zzedix/sm-node:${SMITE_VERSION:-main}
     build:
       context: .
       dockerfile: Dockerfile
