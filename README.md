@@ -7,7 +7,7 @@
     <img src="assets/SmiteL.png" alt="Smite Logo" width="200"/>
   </picture>
   
-  **Modern tunnel management built on GOST, Backhaul, Rathole, Chisel, and FRP, featuring dual-node architecture, intuitive WebUI, real-time status tracking, and open-source freedom.**
+  **Modern tunnel management built on FRP, featuring dual-node architecture, intuitive WebUI, real-time status tracking, and open-source freedom.**
   
   [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
   [![Python](https://img.shields.io/badge/Python-3.11+-blue.svg)](https://www.python.org/)
@@ -23,13 +23,12 @@
 
 ## 🚀 Features
 
-- **Multiple Tunnel Types**: Support for TCP, UDP, WebSocket, gRPC, TCPMux via GOST, Backhaul, Rathole, Chisel, and FRP
+- **FRP Tunnels**: Support for TCP and UDP reverse tunnels via FRP
 - **Dual-Node Architecture**: Iran nodes act as servers, Foreign servers act as clients for reverse tunnels
 - **Docker-First**: Easy deployment with Docker Compose
 - **Web UI**: Modern, intuitive web interface with real-time connection status tracking
 - **CLI Tools**: Powerful command-line tools for management
-- **Node Support**: Easy reverse tunnel setup with Backhaul, Rathole, Chisel, and FRP nodes
-- **GOST Forwarding**: Forward traffic from Iran nodes to Foreign servers with support for TCP, UDP, WebSocket, gRPC, and TCPMux
+- **Node Support**: Easy reverse tunnel setup with FRP nodes
 
 ---
 
@@ -95,15 +94,14 @@ Both certificates are available in the panel's `certs/` directory and can be dow
 
 ## 🖥️ Node Installation
 
-> **Note**: Nodes are used for **Backhaul**, **Rathole**, **Chisel**, and **FRP** tunnels, providing easy reverse tunnel functionality. For GOST tunnels (TCP, UDP, WebSocket, gRPC, TCPMux), GOST runs on Iran nodes and forwards traffic to Foreign servers.
+> **Note**: Nodes are used for **FRP** tunnels, providing easy reverse tunnel functionality.
 
 ### Node Types
 
 Smite uses a **dual-node architecture**:
 
 - **Iran Nodes**: 
-  - Act as servers in reverse tunnels (Rathole, Backhaul, Chisel, FRP)
-  - Run GOST forwarders
+  - Act as servers in reverse tunnels (FRP)
   - Receive overlay IPs from IPAM
   - Participate in WireGuard mesh
   - Use `ca.crt` certificate (from Nodes tab)
@@ -214,32 +212,6 @@ smite-node edit-env     # Edit .env file
 ---
 
 ## 📖 Tunnel Types
-
-### GOST Tunnels (Iran Node Forwarding)
-- **TCP**: Simple TCP forwarding
-- **UDP**: UDP packet forwarding
-- **WebSocket (WS)**: WebSocket protocol forwarding
-- **gRPC**: gRPC protocol forwarding
-- **TCPMux**: TCP multiplexing for multiple connections
-
-GOST tunnels run on Iran nodes and forward traffic to Foreign servers. When creating a GOST tunnel, specify both an Iran node and a Foreign server. The Iran node will listen on the specified port and forward all traffic to the Foreign server's IP address and port.
-
-### Backhaul Tunnels (Reverse Tunnel)
-- **TCP / UDP**: Low-latency reverse tunnels with optional UDP-over-TCP
-- **WS / WSMux**: WebSocket transports for CDN-friendly deployments
-- **TCPMux**: TCP multiplexing support
-- **Advanced Controls**: Configure multiplexing, keepalive, sniffer, and custom port maps per tunnel
-
-Backhaul tunnels use a dual-node architecture: Iran nodes run the Backhaul server, and Foreign servers run the Backhaul client. The panel automatically configures both nodes when creating a tunnel.
-
-### Rathole Tunnels (Reverse Tunnel)
-- **TCP**: Standard TCP reverse tunnel
-- **WebSocket (WS)**: WebSocket transport support
-
-Rathole tunnels use a dual-node architecture: Iran nodes run the Rathole server, and Foreign servers run the Rathole client. The node connects to the panel, allowing you to expose services running on the Foreign server's network through the Iran node.
-
-### Chisel Tunnels (Reverse Tunnel)
-Chisel tunnels use a dual-node architecture: Iran nodes run the Chisel server, and Foreign servers run the Chisel client. They provide fast TCP/UDP reverse tunnel functionality, enabling you to expose services running on the Foreign server's network through the Iran node with high performance.
 
 ### FRP Tunnels (Reverse Tunnel)
 FRP (Fast Reverse Proxy) tunnels use a dual-node architecture: Iran nodes run the FRP server (frps), and Foreign servers run the FRP client (frpc). They provide reliable TCP/UDP reverse tunnel functionality. FRP supports both TCP and UDP protocols, with optional IPv6 support for tunneling IPv6 traffic over IPv4 networks.

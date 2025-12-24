@@ -21,7 +21,7 @@ install-node:
 	cd node && pip install -r requirements.txt
 
 build-panel:
-	DOCKER_BUILDKIT=1 docker compose build smite-panel
+	DOCKER_BUILDKIT=1 docker compose build sm-panel
 
 build-node:
 	cd node && DOCKER_BUILDKIT=1 docker compose build

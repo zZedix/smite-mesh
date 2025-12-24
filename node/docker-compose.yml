@@ -2,12 +2,12 @@
 # Usage: cd node && docker compose up -d
 
 services:
-  smite-node:
-    image: ghcr.io/zzedix/smite-node:${SMITE_VERSION:-latest}
+  sm-node:
+    image: ghcr.io/zzedix/sm-node:${SMITE_VERSION:-latest}
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: smite-node
+    container_name: sm-node
     network_mode: host
     cap_add:
       - NET_ADMIN
@@ -47,4 +47,4 @@ services:
 volumes:
   node-data:
     driver: local
-    name: smite-node-data
+    name: sm-node-data

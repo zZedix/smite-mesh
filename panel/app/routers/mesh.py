@@ -25,6 +25,7 @@ class MeshCreate(BaseModel):
     topology: str = "full-mesh"
     mtu: int = 1280
     transport: str = "both"
+    wireguard_port: Optional[int] = None  # Custom WireGuard port (local_port and remote_port will use this)
 
 
 class MeshResponse(BaseModel):
@@ -54,6 +55,11 @@ async def create_mesh(
     
     if len(mesh.node_ids) < 2:
         raise HTTPException(status_code=400, detail="At least 2 nodes required for mesh")
+    
+    # Validate wireguard_port if provided
+    if mesh.wireguard_port is not None:
+        if not (1 <= mesh.wireguard_port <= 65535):
+            raise HTTPException(status_code=400, detail="wireguard_port must be between 1 and 65535")
     
     nodes_result = await db.execute(
         select(Node).where(Node.id.in_(mesh.node_ids))
@@ -116,6 +122,7 @@ async def create_mesh(
     
     mesh_config_data = {
         "transport": mesh.transport,
+        "wireguard_port": mesh.wireguard_port,  # Store custom WireGuard port
         "nodes": mesh_configs
     }
     
@@ -140,6 +147,7 @@ async def create_mesh(
     )
     mesh_config_data = {
         "transport": mesh.transport,
+        "wireguard_port": mesh.wireguard_port,  # Store custom WireGuard port
         "nodes": mesh_configs
     }
     db_mesh.mesh_config = mesh_config_data
@@ -169,6 +177,7 @@ async def apply_mesh(
         raise HTTPException(status_code=400, detail="Mesh configuration not found")
     
     transport = mesh_config_data.get("transport", "udp")
+    wireguard_port = mesh_config_data.get("wireguard_port")  # Get custom WireGuard port if set
     mesh_configs = mesh_config_data.get("nodes", {})
     
     if not mesh_configs:
@@ -257,8 +266,15 @@ async def apply_mesh(
         # Generate ports
         import hashlib
         port_hash = int(hashlib.md5(f"{mesh_id}-{primary_iran_id}-{trans}".encode()).hexdigest()[:8], 16)
-        bind_port = 7000 + (port_hash % 1000)
-        wg_port = 17000 + (port_hash % 1000)
+        bind_port = 7000 + (port_hash % 1000)  # FRP bind_port remains random
+        
+        # Use custom wireguard_port if provided, otherwise generate randomly
+        if wireguard_port is not None:
+            wg_port = wireguard_port
+            logger.info(f"Using custom WireGuard port: {wg_port}")
+        else:
+            wg_port = 17000 + (port_hash % 1000)
+            logger.info(f"Using generated WireGuard port: {wg_port}")
         
         iran_node_ip = primary_iran_node.node_metadata.get("ip_address")
         if not iran_node_ip:

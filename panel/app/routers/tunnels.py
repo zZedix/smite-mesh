@@ -129,7 +129,7 @@ async def create_tunnel(tunnel: TunnelCreate, request: Request, db: AsyncSession
     
     logger.info(f"Creating tunnel: name={tunnel.name}, type={tunnel.type}, core={tunnel.core}, node_id={tunnel.node_id}")
     
-    is_reverse_tunnel = tunnel.core in {"rathole", "backhaul", "chisel", "frp"}
+    is_reverse_tunnel = tunnel.core == "frp"
     foreign_node = None
     iran_node = None
     
@@ -205,20 +205,12 @@ async def create_tunnel(tunnel: TunnelCreate, request: Request, db: AsyncSession
     await db.refresh(db_tunnel)
     
     try:
-        needs_gost_forwarding = db_tunnel.type in ["tcp", "udp", "ws", "grpc", "tcpmux"] and db_tunnel.core == "gost" and not is_reverse_tunnel
-        needs_rathole_server = False
-        needs_backhaul_server = False
-        needs_chisel_server = False
-        needs_frp_server = False
-        needs_node_apply = db_tunnel.core in {"rathole", "backhaul", "chisel", "frp"}
+        needs_frp_server = db_tunnel.core == "frp"
+        needs_node_apply = db_tunnel.core == "frp"
         
         logger.info(
-            "Tunnel %s: gost=%s, rathole=%s, backhaul=%s, chisel=%s, frp=%s",
+            "Tunnel %s: frp=%s",
             db_tunnel.id,
-            needs_gost_forwarding,
-            needs_rathole_server,
-            needs_backhaul_server,
-            needs_chisel_server,
             needs_frp_server,
         )
         
@@ -231,99 +223,7 @@ async def create_tunnel(tunnel: TunnelCreate, request: Request, db: AsyncSession
             client_spec = db_tunnel.spec.copy() if db_tunnel.spec else {}
             client_spec["mode"] = "client"
             
-            if db_tunnel.core == "rathole":
-                transport = server_spec.get("transport") or server_spec.get("type") or "tcp"
-                proxy_port = server_spec.get("remote_port") or server_spec.get("listen_port")
-                token = server_spec.get("token")
-                if not proxy_port or not token:
-                    db_tunnel.status = "error"
-                    db_tunnel.error_message = "Rathole requires remote_port and token"
-                    await db.commit()
-                    await db.refresh(db_tunnel)
-                    return db_tunnel
-                
-                remote_addr = server_spec.get("remote_addr", "0.0.0.0:23333")
-                from app.utils import parse_address_port
-                _, control_port, _ = parse_address_port(remote_addr)
-                if not control_port:
-                    import hashlib
-                    port_hash = int(hashlib.md5(db_tunnel.id.encode()).hexdigest()[:8], 16)
-                    control_port = 23333 + (port_hash % 1000)
-                server_spec["bind_addr"] = f"0.0.0.0:{control_port}"
-                server_spec["proxy_port"] = proxy_port
-                server_spec["transport"] = transport
-                server_spec["type"] = transport
-                if "websocket_tls" in server_spec:
-                    server_spec["websocket_tls"] = server_spec["websocket_tls"]
-                elif "tls" in server_spec:
-                    server_spec["websocket_tls"] = server_spec["tls"]
-                
-                iran_node_ip = iran_node.node_metadata.get("ip_address")
-                if not iran_node_ip:
-                    db_tunnel.status = "error"
-                    db_tunnel.error_message = "Iran node has no IP address"
-                    await db.commit()
-                    await db.refresh(db_tunnel)
-                    return db_tunnel
-                transport_lower = transport.lower()
-                if transport_lower in ("websocket", "ws"):
-                    use_tls = bool(server_spec.get("websocket_tls") or server_spec.get("tls"))
-                    protocol = "wss://" if use_tls else "ws://"
-                    client_spec["remote_addr"] = f"{protocol}{iran_node_ip}:{control_port}"
-                else:
-                    client_spec["remote_addr"] = f"{iran_node_ip}:{control_port}"
-                client_spec["transport"] = transport
-                client_spec["type"] = transport
-                client_spec["token"] = token
-                if "websocket_tls" in server_spec:
-                    client_spec["websocket_tls"] = server_spec["websocket_tls"]
-                elif "tls" in server_spec:
-                    client_spec["websocket_tls"] = server_spec["tls"]
-                local_addr = client_spec.get("local_addr")
-                if not local_addr:
-                    local_addr = f"{iran_node_ip}:{proxy_port}"
-                client_spec["local_addr"] = local_addr
-                
-            elif db_tunnel.core == "chisel":
-                listen_port = server_spec.get("listen_port") or server_spec.get("remote_port")
-                if not listen_port:
-                    db_tunnel.status = "error"
-                    db_tunnel.error_message = "Chisel requires listen_port"
-                    await db.commit()
-                    await db.refresh(db_tunnel)
-                    return db_tunnel
-                
-                iran_node_ip = iran_node.node_metadata.get("ip_address")
-                if not iran_node_ip:
-                    db_tunnel.status = "error"
-                    db_tunnel.error_message = "Iran node has no IP address"
-                    await db.commit()
-                    await db.refresh(db_tunnel)
-                    return db_tunnel
-                import hashlib
-                port_hash = int(hashlib.md5(db_tunnel.id.encode()).hexdigest()[:8], 16)
-                server_control_port = server_spec.get("control_port") or (int(listen_port) + 10000 + (port_hash % 1000))
-                server_spec["server_port"] = server_control_port
-                server_spec["reverse_port"] = listen_port
-                auth = server_spec.get("auth")
-                if auth:
-                    server_spec["auth"] = auth
-                fingerprint = server_spec.get("fingerprint")
-                if fingerprint:
-                    server_spec["fingerprint"] = fingerprint
-                
-                client_spec["server_url"] = f"http://{iran_node_ip}:{server_control_port}"
-                client_spec["reverse_port"] = listen_port
-                if auth:
-                    client_spec["auth"] = auth
-                if fingerprint:
-                    client_spec["fingerprint"] = fingerprint
-                local_addr = client_spec.get("local_addr")
-                if not local_addr:
-                    local_addr = f"{iran_node_ip}:{listen_port}"
-                client_spec["local_addr"] = local_addr
-                
-            elif db_tunnel.core == "frp":
+            if db_tunnel.core == "frp":
                 import hashlib
                 port_hash = int(hashlib.md5(db_tunnel.id.encode()).hexdigest()[:8], 16)
                 bind_port = server_spec.get("bind_port") or (7000 + (port_hash % 1000))
@@ -351,54 +251,12 @@ async def create_tunnel(tunnel: TunnelCreate, request: Request, db: AsyncSession
                 local_port = client_spec.get("local_port") or bind_port
                 client_spec["local_ip"] = local_ip
                 client_spec["local_port"] = local_port
-                
-            elif db_tunnel.core == "backhaul":
-                transport = server_spec.get("transport") or server_spec.get("type") or "tcp"
-                import hashlib
-                port_hash = int(hashlib.md5(db_tunnel.id.encode()).hexdigest()[:8], 16)
-                control_port = server_spec.get("control_port") or server_spec.get("listen_port") or (3080 + (port_hash % 1000))
-                public_port = server_spec.get("public_port") or server_spec.get("remote_port") or server_spec.get("listen_port")
-                target_host = server_spec.get("target_host", "127.0.0.1")
-                target_port = server_spec.get("target_port") or public_port
-                token = server_spec.get("token")
-                
-                if not public_port:
-                    db_tunnel.status = "error"
-                    db_tunnel.error_message = "Backhaul requires public_port or remote_port"
-                    await db.commit()
-                    await db.refresh(db_tunnel)
-                    return db_tunnel
-                
-                bind_ip = server_spec.get("bind_ip") or server_spec.get("listen_ip") or "0.0.0.0"
-                server_spec["bind_addr"] = f"{bind_ip}:{control_port}"
-                server_spec["transport"] = transport
-                server_spec["type"] = transport
-                if target_port:
-                    target_addr = f"{target_host}:{target_port}"
-                    server_spec["ports"] = [f"{public_port}={target_addr}"]
-                else:
-                    server_spec["ports"] = [str(public_port)]
-                if token:
-                    server_spec["token"] = token
-                
-                iran_node_ip = iran_node.node_metadata.get("ip_address")
-                if not iran_node_ip:
-                    db_tunnel.status = "error"
-                    db_tunnel.error_message = "Iran node has no IP address"
-                    await db.commit()
-                    await db.refresh(db_tunnel)
-                    return db_tunnel
-                transport_lower = transport.lower()
-                if transport_lower in ("ws", "wsmux"):
-                    use_tls = bool(server_spec.get("tls_cert") or server_spec.get("server_options", {}).get("tls_cert"))
-                    protocol = "wss://" if use_tls else "ws://"
-                    client_spec["remote_addr"] = f"{protocol}{iran_node_ip}:{control_port}"
-                else:
-                    client_spec["remote_addr"] = f"{iran_node_ip}:{control_port}"
-                client_spec["transport"] = transport
-                client_spec["type"] = transport
-                if token:
-                    client_spec["token"] = token
+            else:
+                db_tunnel.status = "error"
+                db_tunnel.error_message = f"Unsupported core type: {db_tunnel.core}"
+                await db.commit()
+                await db.refresh(db_tunnel)
+                return db_tunnel
             
             if not iran_node.node_metadata.get("api_address"):
                 iran_node.node_metadata["api_address"] = f"http://{iran_node.node_metadata.get('ip_address', iran_node.fingerprint)}:{iran_node.node_metadata.get('api_port', 8888)}"
@@ -471,122 +329,9 @@ async def create_tunnel(tunnel: TunnelCreate, request: Request, db: AsyncSession
             return db_tunnel
         
         
-        if needs_node_apply and not is_reverse_tunnel:
-            remote_addr = db_tunnel.spec.get("remote_addr")
-            token = db_tunnel.spec.get("token")
-            proxy_port = db_tunnel.spec.get("remote_port") or db_tunnel.spec.get("listen_port")
-            use_ipv6 = db_tunnel.spec.get("use_ipv6", False)
-            
-            if remote_addr:
-                from app.utils import parse_address_port
-                _, rathole_port, _ = parse_address_port(remote_addr)
-                try:
-                    if rathole_port and int(rathole_port) == 8000:
-                        db_tunnel.status = "error"
-                        db_tunnel.error_message = "Rathole server cannot use port 8000 (panel API port). Use a different port like 23333."
-                        await db.commit()
-                        await db.refresh(db_tunnel)
-                        return db_tunnel
-                except (ValueError, TypeError):
-                    pass
-            
-            if remote_addr and token and proxy_port and hasattr(request.app.state, 'rathole_server_manager'):
-                try:
-                    logger.info(f"Starting Rathole server for tunnel {db_tunnel.id}: remote_addr={remote_addr}, token={token}, proxy_port={proxy_port}, use_ipv6={use_ipv6}")
-                    request.app.state.rathole_server_manager.start_server(
-                        tunnel_id=db_tunnel.id,
-                        remote_addr=remote_addr,
-                        token=token,
-                        proxy_port=int(proxy_port),
-                        use_ipv6=bool(use_ipv6)
-                    )
-                    logger.info(f"Successfully started Rathole server for tunnel {db_tunnel.id}")
-                    rathole_started = True
-                except Exception as e:
-                    error_msg = str(e)
-                    logger.error(f"Failed to start Rathole server for tunnel {db_tunnel.id}: {error_msg}", exc_info=True)
-                    db_tunnel.status = "error"
-                    db_tunnel.error_message = f"Rathole server error: {error_msg}"
-                    await db.commit()
-                    await db.refresh(db_tunnel)
-                    return db_tunnel
-            else:
-                missing = []
-                if not remote_addr:
-                    missing.append("remote_addr")
-                if not token:
-                    missing.append("token")
-                if not proxy_port:
-                    missing.append("proxy_port")
-                if not hasattr(request.app.state, 'rathole_server_manager'):
-                    missing.append("rathole_server_manager")
-                logger.warning(f"Tunnel {db_tunnel.id}: Missing required fields for Rathole server: {missing}")
-                if not remote_addr or not token or not proxy_port:
-                    db_tunnel.status = "error"
-                    db_tunnel.error_message = f"Missing required fields for Rathole: {missing}"
-                    await db.commit()
-                    await db.refresh(db_tunnel)
-                    return db_tunnel
-        
-        if needs_chisel_server:
-            listen_port = db_tunnel.spec.get("listen_port") or db_tunnel.spec.get("remote_port") or db_tunnel.spec.get("server_port")
-            auth = db_tunnel.spec.get("auth")
-            fingerprint = db_tunnel.spec.get("fingerprint")
-            use_ipv6 = db_tunnel.spec.get("use_ipv6", False)
-            
-            if listen_port:
-                from app.utils import parse_address_port
-                try:
-                    if int(listen_port) == 8000:
-                        db_tunnel.status = "error"
-                        db_tunnel.error_message = "Chisel server cannot use port 8000 (panel API port). Use a different port."
-                        await db.commit()
-                        await db.refresh(db_tunnel)
-                        return db_tunnel
-                except (ValueError, TypeError):
-                    pass
-            
-            if listen_port and hasattr(request.app.state, 'chisel_server_manager'):
-                try:
-                    server_control_port = db_tunnel.spec.get("control_port")
-                    if server_control_port:
-                        server_control_port = int(server_control_port)
-                    else:
-                        server_control_port = int(listen_port) + 10000
-                    logger.info(f"Starting Chisel server for tunnel {db_tunnel.id}: server_control_port={server_control_port}, reverse_port={listen_port}, auth={auth is not None}, fingerprint={fingerprint is not None}, use_ipv6={use_ipv6}")
-                    request.app.state.chisel_server_manager.start_server(
-                        tunnel_id=db_tunnel.id,
-                        server_port=server_control_port,
-                        auth=auth,
-                        fingerprint=fingerprint,
-                        use_ipv6=bool(use_ipv6)
-                    )
-                    time.sleep(1.0)
-                    if not request.app.state.chisel_server_manager.is_running(db_tunnel.id):
-                        raise RuntimeError("Chisel server process started but is not running")
-                    chisel_started = True
-                    logger.info(f"Successfully started Chisel server for tunnel {db_tunnel.id}")
-                except Exception as e:
-                    error_msg = str(e)
-                    logger.error(f"Failed to start Chisel server for tunnel {db_tunnel.id}: {error_msg}", exc_info=True)
-                    db_tunnel.status = "error"
-                    db_tunnel.error_message = f"Chisel server error: {error_msg}"
-                    await db.commit()
-                    await db.refresh(db_tunnel)
-                    return db_tunnel
-            else:
-                missing = []
-                if not listen_port:
-                    missing.append("listen_port")
-                if not hasattr(request.app.state, 'chisel_server_manager'):
-                    missing.append("chisel_server_manager")
-                logger.warning(f"Tunnel {db_tunnel.id}: Missing required fields for Chisel server: {missing}")
-                if not listen_port:
-                    db_tunnel.status = "error"
-                    db_tunnel.error_message = f"Missing required fields for Chisel: {missing}"
-                    await db.commit()
-                    await db.refresh(db_tunnel)
-                    return db_tunnel
+        if needs_frp_server:
+            # FRP server is handled by node-side adapter, no panel-side server needed
+            pass
         
         if needs_frp_server:
             bind_port = db_tunnel.spec.get("bind_port", 7000)
@@ -650,50 +395,6 @@ async def create_tunnel(tunnel: TunnelCreate, request: Request, db: AsyncSession
             
             spec_for_node = db_tunnel.spec.copy() if db_tunnel.spec else {}
             
-            if needs_chisel_server:
-                listen_port = spec_for_node.get("listen_port") or spec_for_node.get("remote_port") or spec_for_node.get("server_port")
-                use_ipv6 = spec_for_node.get("use_ipv6", False)
-                if listen_port:
-                    server_control_port = spec_for_node.get("control_port")
-                    if server_control_port:
-                        server_control_port = int(server_control_port)
-                    else:
-                        server_control_port = int(listen_port) + 10000
-                    reverse_port = int(listen_port)
-                    
-                    panel_host = spec_for_node.get("panel_host")
-                    
-                    if not panel_host:
-                        panel_address = node.node_metadata.get("panel_address", "")
-                        if panel_address:
-                            if "://" in panel_address:
-                                panel_address = panel_address.split("://", 1)[1]
-                            if ":" in panel_address:
-                                panel_host = panel_address.split(":")[0]
-                            else:
-                                panel_host = panel_address
-                    
-                    if not panel_host or panel_host in ["localhost", "127.0.0.1", "::1"]:
-                        panel_host = request.url.hostname
-                        if not panel_host or panel_host in ["localhost", "127.0.0.1", "::1"]:
-                            forwarded_host = request.headers.get("X-Forwarded-Host")
-                            if forwarded_host:
-                                panel_host = forwarded_host.split(":")[0] if ":" in forwarded_host else forwarded_host
-                    
-                    if not panel_host or panel_host in ["localhost", "127.0.0.1", "::1"]:
-                        logger.warning(f"Chisel tunnel {db_tunnel.id}: Could not determine panel host, using request hostname: {request.url.hostname}. Node may not be able to connect if this is localhost.")
-                        panel_host = request.url.hostname or "localhost"
-                    
-                    from app.utils import is_valid_ipv6_address
-                    if is_valid_ipv6_address(panel_host):
-                        server_url = f"http://[{panel_host}]:{server_control_port}"
-                    else:
-                        server_url = f"http://{panel_host}:{server_control_port}"
-                    spec_for_node["server_url"] = server_url
-                    spec_for_node["reverse_port"] = reverse_port
-                    spec_for_node["remote_port"] = int(listen_port)
-                    logger.info(f"Chisel tunnel {db_tunnel.id}: server_url={server_url}, server_control_port={server_control_port}, reverse_port={reverse_port}, use_ipv6={use_ipv6}, panel_host={panel_host}")
-            
             if needs_frp_server:
                 logger.info(f"Preparing FRP spec for tunnel {db_tunnel.id}, original spec server_addr: {spec_for_node.get('server_addr', 'NOT SET')}")
                 try:
@@ -728,21 +429,6 @@ async def create_tunnel(tunnel: TunnelCreate, request: Request, db: AsyncSession
                 error_msg = response.get("message", "Unknown error from node")
                 db_tunnel.error_message = f"Node error: {error_msg}"
                 logger.error(f"Tunnel {db_tunnel.id}: {error_msg}")
-                if needs_rathole_server and hasattr(request.app.state, 'rathole_server_manager'):
-                    try:
-                        request.app.state.rathole_server_manager.stop_server(db_tunnel.id)
-                    except:
-                        pass
-                if needs_backhaul_server and hasattr(request.app.state, "backhaul_manager"):
-                    try:
-                        request.app.state.backhaul_manager.stop_server(db_tunnel.id)
-                    except Exception:
-                        pass
-                if needs_chisel_server and hasattr(request.app.state, 'chisel_server_manager'):
-                    try:
-                        request.app.state.chisel_server_manager.stop_server(db_tunnel.id)
-                    except Exception:
-                        pass
                 if needs_frp_server and hasattr(request.app.state, 'frp_server_manager'):
                     try:
                         request.app.state.frp_server_manager.stop_server(db_tunnel.id)
@@ -756,21 +442,6 @@ async def create_tunnel(tunnel: TunnelCreate, request: Request, db: AsyncSession
                 db_tunnel.status = "error"
                 db_tunnel.error_message = "Failed to apply tunnel to node. Check node connection."
                 logger.error(f"Tunnel {db_tunnel.id}: Failed to apply to node")
-                if needs_rathole_server and hasattr(request.app.state, 'rathole_server_manager'):
-                    try:
-                        request.app.state.rathole_server_manager.stop_server(db_tunnel.id)
-                    except:
-                        pass
-                if needs_backhaul_server and hasattr(request.app.state, "backhaul_manager"):
-                    try:
-                        request.app.state.backhaul_manager.stop_server(db_tunnel.id)
-                    except Exception:
-                        pass
-                if needs_chisel_server and hasattr(request.app.state, 'chisel_server_manager'):
-                    try:
-                        request.app.state.chisel_server_manager.stop_server(db_tunnel.id)
-                    except Exception:
-                        pass
                 if needs_frp_server and hasattr(request.app.state, 'frp_server_manager'):
                     try:
                         request.app.state.frp_server_manager.stop_server(db_tunnel.id)
@@ -781,136 +452,6 @@ async def create_tunnel(tunnel: TunnelCreate, request: Request, db: AsyncSession
                 return db_tunnel
         
         db_tunnel.status = "active"
-        
-        try:
-            if needs_gost_forwarding:
-                iran_node_id_val = tunnel.iran_node_id if tunnel.iran_node_id and (not isinstance(tunnel.iran_node_id, str) or tunnel.iran_node_id.strip()) else None
-                foreign_node_id_val = tunnel.foreign_node_id if tunnel.foreign_node_id and (not isinstance(tunnel.foreign_node_id, str) or tunnel.foreign_node_id.strip()) else None
-                
-                if iran_node_id_val and foreign_node_id_val:
-                    result = await db.execute(select(Node).where(Node.id == iran_node_id_val))
-                    iran_node = result.scalar_one_or_none()
-                    result = await db.execute(select(Node).where(Node.id == foreign_node_id_val))
-                    foreign_node = result.scalar_one_or_none()
-                    
-                    if not iran_node:
-                        db_tunnel.status = "error"
-                        db_tunnel.error_message = "Iran node not found"
-                        await db.commit()
-                        await db.refresh(db_tunnel)
-                        return db_tunnel
-                    
-                    if not foreign_node:
-                        db_tunnel.status = "error"
-                        db_tunnel.error_message = "Foreign server not found"
-                        await db.commit()
-                        await db.refresh(db_tunnel)
-                        return db_tunnel
-                    
-                    foreign_ip = foreign_node.node_metadata.get("ip_address")
-                    if not foreign_ip:
-                        db_tunnel.status = "error"
-                        db_tunnel.error_message = "Foreign server has no IP address"
-                        await db.commit()
-                        await db.refresh(db_tunnel)
-                        return db_tunnel
-                    
-                    listen_port = db_tunnel.spec.get("listen_port") or db_tunnel.spec.get("remote_port")
-                    remote_port = db_tunnel.spec.get("remote_port", 8080)
-                    use_ipv6 = db_tunnel.spec.get("use_ipv6", False)
-                    
-                    if not listen_port:
-                        db_tunnel.status = "error"
-                        db_tunnel.error_message = "GOST requires listen_port or remote_port"
-                        await db.commit()
-                        await db.refresh(db_tunnel)
-                        return db_tunnel
-                    
-                    gost_spec = {
-                        "listen_port": int(listen_port),
-                        "forward_to": f"{foreign_ip}:{remote_port}",
-                        "type": db_tunnel.type,
-                        "use_ipv6": use_ipv6
-                    }
-                    
-                    client = NodeClient()
-                    if not iran_node.node_metadata.get("api_address"):
-                        iran_node.node_metadata["api_address"] = f"http://{iran_node.node_metadata.get('ip_address', iran_node.fingerprint)}:{iran_node.node_metadata.get('api_port', 8888)}"
-                        await db.commit()
-                    
-                    logger.info(f"Applying GOST forwarding to Iran node {iran_node.id} for tunnel {db_tunnel.id}: {db_tunnel.type}://:{listen_port} -> {foreign_ip}:{remote_port}")
-                    response = await client.send_to_node(
-                        node_id=iran_node.id,
-                        endpoint="/api/agent/tunnels/apply",
-                        data={
-                            "tunnel_id": db_tunnel.id,
-                            "core": "gost",
-                            "type": db_tunnel.type,
-                            "spec": gost_spec
-                        }
-                    )
-                    
-                    if response.get("status") != "success":
-                        error_msg = response.get("message", "Unknown error from Iran node")
-                        db_tunnel.status = "error"
-                        db_tunnel.error_message = f"Iran node error: {error_msg}"
-                        logger.error(f"Tunnel {db_tunnel.id}: Iran node error: {error_msg}")
-                        await db.commit()
-                        await db.refresh(db_tunnel)
-                        return db_tunnel
-                    
-                    logger.info(f"Successfully applied GOST forwarding to Iran node for tunnel {db_tunnel.id}")
-                else:
-                    listen_port = db_tunnel.spec.get("listen_port")
-                    forward_to = db_tunnel.spec.get("forward_to")
-                    
-                    if not forward_to:
-                        from app.utils import format_address_port
-                        remote_ip = db_tunnel.spec.get("remote_ip", "127.0.0.1")
-                        remote_port = db_tunnel.spec.get("remote_port", 8080)
-                        forward_to = format_address_port(remote_ip, remote_port)
-                    
-                    panel_port = listen_port or db_tunnel.spec.get("remote_port")
-                    use_ipv6 = db_tunnel.spec.get("use_ipv6", False)
-                    
-                    if panel_port and forward_to and hasattr(request.app.state, 'gost_forwarder'):
-                        try:
-                            logger.info(f"Starting gost forwarding on panel for tunnel {db_tunnel.id}: {db_tunnel.type}://:{panel_port} -> {forward_to}, use_ipv6={use_ipv6}")
-                            request.app.state.gost_forwarder.start_forward(
-                                tunnel_id=db_tunnel.id,
-                                local_port=int(panel_port),
-                                forward_to=forward_to,
-                                tunnel_type=db_tunnel.type,
-                                use_ipv6=bool(use_ipv6)
-                            )
-                            time.sleep(2)
-                            if not request.app.state.gost_forwarder.is_forwarding(db_tunnel.id):
-                                raise RuntimeError("Gost process started but is not running")
-                            logger.info(f"Successfully started gost forwarding on panel for tunnel {db_tunnel.id}")
-                        except Exception as e:
-                            error_msg = str(e)
-                            logger.error(f"Failed to start gost forwarding on panel for tunnel {db_tunnel.id}: {error_msg}", exc_info=True)
-                            db_tunnel.status = "error"
-                            db_tunnel.error_message = f"Gost forwarding error: {error_msg}"
-                            await db.commit()
-                            await db.refresh(db_tunnel)
-                            return db_tunnel
-                    else:
-                        missing = []
-                        if not panel_port:
-                            missing.append("panel_port")
-                        if not forward_to:
-                            missing.append("forward_to")
-                        if not hasattr(request.app.state, 'gost_forwarder'):
-                            missing.append("gost_forwarder")
-                        logger.warning(f"Tunnel {db_tunnel.id}: Missing required fields: {missing}")
-                        if not forward_to:
-                            error_msg = "forward_to is required for gost tunnels"
-                            db_tunnel.status = "error"
-                            db_tunnel.error_message = error_msg
-            
-        except Exception as e:
-            logger.error(f"Exception in forwarding setup for tunnel {db_tunnel.id}: {e}", exc_info=True)
         
         await db.commit()
         await db.refresh(db_tunnel)
@@ -983,114 +524,10 @@ async def update_tunnel(
     
     if spec_changed:
         try:
-            needs_gost_forwarding = tunnel.type in ["tcp", "udp", "ws", "grpc", "tcpmux"] and tunnel.core == "gost"
-            needs_rathole_server = tunnel.core == "rathole"
-            needs_backhaul_server = tunnel.core == "backhaul"
-            needs_chisel_server = tunnel.core == "chisel"
             needs_frp_server = tunnel.core == "frp"
-            needs_node_apply = tunnel.core in {"rathole", "backhaul", "chisel", "frp"}
+            needs_node_apply = tunnel.core == "frp"
             
-            if needs_gost_forwarding:
-                listen_port = tunnel.spec.get("listen_port")
-                forward_to = tunnel.spec.get("forward_to")
-                
-                if not forward_to:
-                    from app.utils import format_address_port
-                    remote_ip = tunnel.spec.get("remote_ip", "127.0.0.1")
-                    remote_port = tunnel.spec.get("remote_port", 8080)
-                    forward_to = format_address_port(remote_ip, remote_port)
-                
-                panel_port = listen_port or tunnel.spec.get("remote_port")
-                use_ipv6 = tunnel.spec.get("use_ipv6", False)
-                
-                if panel_port and forward_to and hasattr(request.app.state, 'gost_forwarder'):
-                    try:
-                        request.app.state.gost_forwarder.stop_forward(tunnel.id)
-                        time.sleep(0.5)
-                        logger.info(f"Restarting gost forwarding for tunnel {tunnel.id}: {tunnel.type}://:{panel_port} -> {forward_to}, use_ipv6={use_ipv6}")
-                        request.app.state.gost_forwarder.start_forward(
-                            tunnel_id=tunnel.id,
-                            local_port=int(panel_port),
-                            forward_to=forward_to,
-                            tunnel_type=tunnel.type,
-                            use_ipv6=bool(use_ipv6)
-                        )
-                        tunnel.status = "active"
-                        tunnel.error_message = None
-                        logger.info(f"Successfully restarted gost forwarding for tunnel {tunnel.id}")
-                    except Exception as e:
-                        error_msg = str(e)
-                        logger.error(f"Failed to restart gost forwarding for tunnel {tunnel.id}: {error_msg}", exc_info=True)
-                        tunnel.status = "error"
-                        tunnel.error_message = f"Gost forwarding error: {error_msg}"
-                else:
-                    if not forward_to:
-                        tunnel.status = "error"
-                        tunnel.error_message = "forward_to is required for gost tunnels"
-            
-            elif needs_rathole_server:
-                if hasattr(request.app.state, 'rathole_server_manager'):
-                    remote_addr = tunnel.spec.get("remote_addr")
-                    token = tunnel.spec.get("token")
-                    proxy_port = tunnel.spec.get("remote_port") or tunnel.spec.get("listen_port")
-                    
-                    if remote_addr and token and proxy_port:
-                        try:
-                            request.app.state.rathole_server_manager.stop_server(tunnel.id)
-                            request.app.state.rathole_server_manager.start_server(
-                                tunnel_id=tunnel.id,
-                                remote_addr=remote_addr,
-                                token=token,
-                                proxy_port=int(proxy_port)
-                            )
-                            tunnel.status = "active"
-                            tunnel.error_message = None
-                        except Exception as e:
-                            logger.error(f"Failed to restart Rathole server: {e}")
-                            tunnel.status = "error"
-                            tunnel.error_message = f"Rathole server error: {str(e)}"
-            elif needs_backhaul_server:
-                manager = getattr(request.app.state, "backhaul_manager", None)
-                if manager:
-                    try:
-                        manager.stop_server(tunnel.id)
-                    except Exception:
-                        pass
-                    try:
-                        manager.start_server(tunnel.id, tunnel.spec or {})
-                        time.sleep(1.0)
-                        if not manager.is_running(tunnel.id):
-                            raise RuntimeError("Backhaul process not running")
-                        tunnel.status = "active"
-                        tunnel.error_message = None
-                    except Exception as exc:
-                        logger.error("Failed to restart Backhaul server for tunnel %s: %s", tunnel.id, exc, exc_info=True)
-                        tunnel.status = "error"
-                        tunnel.error_message = f"Backhaul server error: {exc}"
-            elif needs_chisel_server:
-                if hasattr(request.app.state, 'chisel_server_manager'):
-                    server_port = tunnel.spec.get("control_port") or (int(tunnel.spec.get("listen_port", 0)) + 10000)
-                    auth = tunnel.spec.get("auth") or tunnel.spec.get("token")
-                    fingerprint = tunnel.spec.get("fingerprint")
-                    use_ipv6 = tunnel.spec.get("use_ipv6", False)
-                    
-                    if server_port and auth and fingerprint:
-                        try:
-                            request.app.state.chisel_server_manager.stop_server(tunnel.id)
-                            request.app.state.chisel_server_manager.start_server(
-                                tunnel_id=tunnel.id,
-                                server_port=int(server_port),
-                                auth=auth,
-                                fingerprint=fingerprint,
-                                use_ipv6=bool(use_ipv6)
-                            )
-                            tunnel.status = "active"
-                            tunnel.error_message = None
-                        except Exception as e:
-                            logger.error(f"Failed to restart Chisel server: {e}")
-                            tunnel.status = "error"
-                            tunnel.error_message = f"Chisel server error: {str(e)}"
-            elif needs_frp_server:
+            if needs_frp_server:
                 if hasattr(request.app.state, 'frp_server_manager'):
                     bind_port = tunnel.spec.get("bind_port", 7000)
                     token = tunnel.spec.get("token")
@@ -1152,20 +589,10 @@ async def update_tunnel(
                             else:
                                 tunnel.status = "error"
                                 tunnel.error_message = f"Node error: {response.get('message', 'Unknown error')}"
-                                if needs_backhaul_server and hasattr(request.app.state, "backhaul_manager"):
-                                    try:
-                                        request.app.state.backhaul_manager.stop_server(tunnel.id)
-                                    except Exception:
-                                        pass
                     except Exception as e:
                         logger.error(f"Failed to re-apply tunnel to node: {e}")
                         tunnel.status = "error"
                         tunnel.error_message = f"Node error: {str(e)}"
-                        if needs_backhaul_server and hasattr(request.app.state, "backhaul_manager"):
-                            try:
-                                request.app.state.backhaul_manager.stop_server(tunnel.id)
-                            except Exception:
-                                pass
             
             await db.commit()
             await db.refresh(tunnel)
@@ -1275,14 +702,7 @@ async def delete_tunnel(tunnel_id: str, request: Request, db: AsyncSession = Dep
             except Exception as e:
                 import logging
                 logging.error(f"Failed to stop Backhaul server: {e}")
-    elif needs_chisel_server:
-        if hasattr(request.app.state, 'chisel_server_manager'):
-            try:
-                request.app.state.chisel_server_manager.stop_server(tunnel.id)
-            except Exception as e:
-                import logging
-                logging.error(f"Failed to stop Chisel server: {e}")
-    elif needs_frp_server:
+    if needs_frp_server:
         if hasattr(request.app.state, 'frp_server_manager'):
             try:
                 request.app.state.frp_server_manager.stop_server(tunnel.id)

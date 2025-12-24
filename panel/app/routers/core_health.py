@@ -16,7 +16,7 @@ from app.node_client import NodeClient
 router = APIRouter()
 logger = logging.getLogger(__name__)
 
-CORES = ["backhaul", "rathole", "chisel", "frp"]
+CORES = ["frp"]
 
 
 class CoreHealthResponse(BaseModel):
@@ -314,83 +314,7 @@ async def _reset_core(core: str, app_or_request, db: AsyncSession):
             client_spec = tunnel.spec.copy() if tunnel.spec else {}
             client_spec["mode"] = "client"
             
-            if core == "rathole":
-                transport = server_spec.get("transport") or server_spec.get("type") or "tcp"
-                proxy_port = server_spec.get("remote_port") or server_spec.get("listen_port")
-                token = server_spec.get("token")
-                if not proxy_port or not token:
-                    logger.warning(f"Tunnel {tunnel.id}: Missing remote_port or token, skipping")
-                    continue
-                
-                remote_addr = server_spec.get("remote_addr", "0.0.0.0:23333")
-                from app.utils import parse_address_port
-                _, control_port, _ = parse_address_port(remote_addr)
-                if not control_port:
-                    control_port = 23333
-                server_spec["bind_addr"] = f"0.0.0.0:{control_port}"
-                server_spec["proxy_port"] = proxy_port
-                server_spec["transport"] = transport
-                server_spec["type"] = transport
-                if "websocket_tls" in server_spec:
-                    server_spec["websocket_tls"] = server_spec["websocket_tls"]
-                elif "tls" in server_spec:
-                    server_spec["websocket_tls"] = server_spec["tls"]
-                
-                iran_node_ip = iran_node.node_metadata.get("ip_address")
-                if not iran_node_ip:
-                    logger.warning(f"Tunnel {tunnel.id}: Iran node has no IP address, skipping")
-                    continue
-                transport_lower = transport.lower()
-                if transport_lower in ("websocket", "ws"):
-                    use_tls = bool(server_spec.get("websocket_tls") or server_spec.get("tls"))
-                    protocol = "wss://" if use_tls else "ws://"
-                    client_spec["remote_addr"] = f"{protocol}{iran_node_ip}:{control_port}"
-                else:
-                    client_spec["remote_addr"] = f"{iran_node_ip}:{control_port}"
-                client_spec["transport"] = transport
-                client_spec["type"] = transport
-                client_spec["token"] = token
-                if "websocket_tls" in server_spec:
-                    client_spec["websocket_tls"] = server_spec["websocket_tls"]
-                elif "tls" in server_spec:
-                    client_spec["websocket_tls"] = server_spec["tls"]
-                local_addr = client_spec.get("local_addr")
-                if not local_addr:
-                    local_addr = f"{iran_node_ip}:{proxy_port}"
-                client_spec["local_addr"] = local_addr
-            
-            elif core == "chisel":
-                listen_port = server_spec.get("listen_port") or server_spec.get("remote_port")
-                if not listen_port:
-                    logger.warning(f"Tunnel {tunnel.id}: Missing listen_port, skipping")
-                    continue
-                
-                iran_node_ip = iran_node.node_metadata.get("ip_address")
-                if not iran_node_ip:
-                    logger.warning(f"Tunnel {tunnel.id}: Iran node has no IP address, skipping")
-                    continue
-                server_control_port = server_spec.get("control_port") or (int(listen_port) + 10000)
-                server_spec["server_port"] = server_control_port
-                server_spec["reverse_port"] = listen_port
-                auth = server_spec.get("auth")
-                if auth:
-                    server_spec["auth"] = auth
-                fingerprint = server_spec.get("fingerprint")
-                if fingerprint:
-                    server_spec["fingerprint"] = fingerprint
-                
-                client_spec["server_url"] = f"http://{iran_node_ip}:{server_control_port}"
-                client_spec["reverse_port"] = listen_port
-                if auth:
-                    client_spec["auth"] = auth
-                if fingerprint:
-                    client_spec["fingerprint"] = fingerprint
-                local_addr = client_spec.get("local_addr")
-                if not local_addr:
-                    local_addr = f"{iran_node_ip}:{listen_port}"
-                client_spec["local_addr"] = local_addr
-            
-            elif core == "frp":
+            if core == "frp":
                 bind_port = server_spec.get("bind_port", 7000)
                 token = server_spec.get("token")
                 server_spec["bind_port"] = bind_port
@@ -413,46 +337,9 @@ async def _reset_core(core: str, app_or_request, db: AsyncSession):
                 local_port = client_spec.get("local_port") or bind_port
                 client_spec["local_ip"] = local_ip
                 client_spec["local_port"] = local_port
-            
-            elif core == "backhaul":
-                transport = server_spec.get("transport") or server_spec.get("type") or "tcp"
-                control_port = server_spec.get("control_port") or server_spec.get("listen_port") or 3080
-                public_port = server_spec.get("public_port") or server_spec.get("remote_port") or server_spec.get("listen_port")
-                target_host = server_spec.get("target_host", "127.0.0.1")
-                target_port = server_spec.get("target_port") or public_port
-                token = server_spec.get("token")
-                
-                if not public_port:
-                    logger.warning(f"Tunnel {tunnel.id}: Missing public_port, skipping")
-                    continue
-                
-                bind_ip = server_spec.get("bind_ip") or server_spec.get("listen_ip") or "0.0.0.0"
-                server_spec["bind_addr"] = f"{bind_ip}:{control_port}"
-                server_spec["transport"] = transport
-                server_spec["type"] = transport
-                if target_port:
-                    target_addr = f"{target_host}:{target_port}"
-                    server_spec["ports"] = [f"{public_port}={target_addr}"]
-                else:
-                    server_spec["ports"] = [str(public_port)]
-                if token:
-                    server_spec["token"] = token
-                
-                iran_node_ip = iran_node.node_metadata.get("ip_address")
-                if not iran_node_ip:
-                    logger.warning(f"Tunnel {tunnel.id}: Iran node has no IP address, skipping")
-                    continue
-                transport_lower = transport.lower()
-                if transport_lower in ("ws", "wsmux"):
-                    use_tls = bool(server_spec.get("tls_cert") or server_spec.get("server_options", {}).get("tls_cert"))
-                    protocol = "wss://" if use_tls else "ws://"
-                    client_spec["remote_addr"] = f"{protocol}{iran_node_ip}:{control_port}"
-                else:
-                    client_spec["remote_addr"] = f"{iran_node_ip}:{control_port}"
-                client_spec["transport"] = transport
-                client_spec["type"] = transport
-                if token:
-                    client_spec["token"] = token
+            else:
+                logger.warning(f"Tunnel {tunnel.id}: Unsupported core type {core}, skipping")
+                continue
             
             if not iran_node.node_metadata.get("api_address"):
                 iran_node.node_metadata["api_address"] = f"http://{iran_node.node_metadata.get('ip_address', iran_node.fingerprint)}:{iran_node.node_metadata.get('api_port', 8888)}"

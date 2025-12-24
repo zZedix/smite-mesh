@@ -302,7 +302,7 @@ fi
 
 # Try to pull prebuilt images first (will fallback to build if not available)
 echo "  Pulling prebuilt images from GHCR..."
-if docker pull ghcr.io/zzedix/smite-panel:${SMITE_VERSION} 2>/dev/null; then
+if docker pull ghcr.io/zzedix/sm-panel:${SMITE_VERSION} 2>/dev/null; then
     progress "Panel image pulled from GHCR"
 else
     echo -e "${YELLOW}Prebuilt image not found, will build locally...${NC}"
@@ -322,7 +322,7 @@ if [ "$NGINX_ENABLED" = "true" ]; then
     export NGINX_ENABLED=true
     
     # First start panel (will use host networking)
-    docker compose up -d smite-panel
+    docker compose up -d sm-panel
     
     # Wait a bit for panel to start
     echo "Waiting for panel to start..."
@@ -358,7 +358,7 @@ echo "Waiting for services to start..."
 sleep 5
 
 # Check status
-if docker ps | grep -q smite-panel; then
+if docker ps | grep -q sm-panel; then
     echo ""
     echo -e "${GREEN}✅ Smite Panel installed successfully!${NC}"
     echo ""

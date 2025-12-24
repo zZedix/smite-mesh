@@ -134,14 +134,14 @@ def cmd_admin_create(args):
     
     try:
         check_result = subprocess.run(
-            ["docker", "ps", "-a", "--filter", "name=smite-panel", "--format", "{{.Names}}"],
+            ["docker", "ps", "-a", "--filter", "name=sm-panel", "--format", "{{.Names}}"],
             capture_output=True,
             text=True,
             timeout=5
         )
         
         if check_result.returncode != 0 or not check_result.stdout.strip():
-            print("Container 'smite-panel' not found.")
+            print("Container 'sm-panel' not found.")
             print("\nStarting the panel...")
             compose_file = get_compose_file()
             if not compose_file.exists():
@@ -162,7 +162,7 @@ def cmd_admin_create(args):
             import time
             time.sleep(5)
             check_result = subprocess.run(
-                ["docker", "ps", "-a", "--filter", "name=smite-panel", "--format", "{{.Names}}"],
+                ["docker", "ps", "-a", "--filter", "name=sm-panel", "--format", "{{.Names}}"],
                 capture_output=True,
                 text=True,
                 timeout=5
@@ -198,7 +198,7 @@ def cmd_admin_create(args):
                     print("Attempting to start container...")
                     compose_file = get_compose_file()
                     start_result = subprocess.run(
-                        ["docker", "compose", "-f", str(compose_file), "start", "smite-panel"],
+                        ["docker", "compose", "-f", str(compose_file), "start", "sm-panel"],
                         capture_output=True,
                         text=True
                     )
@@ -217,7 +217,7 @@ def cmd_admin_create(args):
             waited += 2
         else:
             print("\nTimeout waiting for container to be ready.")
-            print("Please check container status: docker ps -a | grep smite-panel")
+            print("Please check container status: docker ps -a | grep sm-panel")
             sys.exit(1)
         
         if container_name:
@@ -325,7 +325,7 @@ asyncio.run(create())
         else:
             print("Warning: Container not running or still restarting. Checking container status...")
             status_proc = subprocess.run(
-                ["docker", "ps", "-a", "--filter", "name=smite-panel", "--format", "table {{.Names}}\\t{{.Status}}"],
+                ["docker", "ps", "-a", "--filter", "name=sm-panel", "--format", "table {{.Names}}\\t{{.Status}}"],
                 capture_output=True,
                 text=True
             )
@@ -408,14 +408,14 @@ def cmd_admin_update(args):
     
     try:
         check_result = subprocess.run(
-            ["docker", "ps", "-a", "--filter", "name=smite-panel", "--format", "{{.Names}}"],
+            ["docker", "ps", "-a", "--filter", "name=sm-panel", "--format", "{{.Names}}"],
             capture_output=True,
             text=True,
             timeout=5
         )
         
         if check_result.returncode != 0 or not check_result.stdout.strip():
-            print("Container 'smite-panel' not found.")
+            print("Container 'sm-panel' not found.")
             print("\nStarting the panel...")
             compose_file = get_compose_file()
             if not compose_file.exists():
@@ -436,7 +436,7 @@ def cmd_admin_update(args):
             import time
             time.sleep(5)
             check_result = subprocess.run(
-                ["docker", "ps", "-a", "--filter", "name=smite-panel", "--format", "{{.Names}}"],
+                ["docker", "ps", "-a", "--filter", "name=sm-panel", "--format", "{{.Names}}"],
                 capture_output=True,
                 text=True,
                 timeout=5
@@ -472,7 +472,7 @@ def cmd_admin_update(args):
                     print("Attempting to start container...")
                     compose_file = get_compose_file()
                     start_result = subprocess.run(
-                        ["docker", "compose", "-f", str(compose_file), "start", "smite-panel"],
+                        ["docker", "compose", "-f", str(compose_file), "start", "sm-panel"],
                         capture_output=True,
                         text=True
                     )
@@ -491,7 +491,7 @@ def cmd_admin_update(args):
             waited += 2
         else:
             print("\nTimeout waiting for container to be ready.")
-            print("Please check container status: docker ps -a | grep smite-panel")
+            print("Please check container status: docker ps -a | grep sm-panel")
             sys.exit(1)
         
         if container_name:
@@ -594,7 +594,7 @@ asyncio.run(update())
         else:
             print("Warning: Container not running or still restarting. Checking container status...")
             status_proc = subprocess.run(
-                ["docker", "ps", "-a", "--filter", "name=smite-panel", "--format", "table {{.Names}}\\t{{.Status}}"],
+                ["docker", "ps", "-a", "--filter", "name=sm-panel", "--format", "table {{.Names}}\\t{{.Status}}"],
                 capture_output=True,
                 text=True
             )
@@ -666,7 +666,7 @@ def cmd_status(args):
     print("Panel Status:")
     print("-" * 50)
     
-    result = subprocess.run(["docker", "ps", "--filter", "name=smite-panel", "--format", "{{.Status}}"], 
+    result = subprocess.run(["docker", "ps", "--filter", "name=sm-panel", "--format", "{{.Status}}"], 
                           capture_output=True, text=True)
     if result.stdout.strip():
         print(f"Docker: {result.stdout.strip()}")
@@ -707,15 +707,15 @@ def cmd_update(args):
 def cmd_restart(args):
     """Restart panel (recreate container to pick up .env changes, no pull)"""
     print("Restarting panel...")
-    run_docker_compose(["stop", "smite-panel"])
-    run_docker_compose(["rm", "-f", "smite-panel"])
-    run_docker_compose(["up", "-d", "--no-deps", "smite-panel"])
+    run_docker_compose(["stop", "sm-panel"])
+    run_docker_compose(["rm", "-f", "sm-panel"])
+    run_docker_compose(["up", "-d", "--no-deps", "sm-panel"])
     
     import time
     time.sleep(2)
-    result = subprocess.run(["docker", "ps", "--filter", "name=smite-panel", "--format", "{{.Status}}"], capture_output=True, text=True)
+    result = subprocess.run(["docker", "ps", "--filter", "name=sm-panel", "--format", "{{.Status}}"], capture_output=True, text=True)
     if not result.stdout.strip() or "Up" not in result.stdout:
-        print("Warning: Panel container may not be running. Check logs with: docker logs smite-panel")
+        print("Warning: Panel container may not be running. Check logs with: docker logs sm-panel")
     
     result = subprocess.run(["docker", "ps", "--filter", "name=smite-nginx", "--format", "{{.Names}}"], capture_output=True, text=True)
     if result.stdout.strip():
@@ -752,7 +752,7 @@ def cmd_edit_env(args):
 def cmd_logs(args):
     """Stream logs"""
     follow = ["--follow"] if args.follow else []
-    run_docker_compose(["logs"] + follow + ["smite-panel"])
+    run_docker_compose(["logs"] + follow + ["sm-panel"])
 
 
 def cmd_uninstall(args):
@@ -761,12 +761,12 @@ def cmd_uninstall(args):
     print("⚠️  WARNING: This will completely remove Smite Panel!")
     print("=" * 60)
     print("\nThis will remove:")
-    print("  - All Docker containers (smite-panel, smite-nginx)")
+    print("  - All Docker containers (sm-panel, smite-nginx)")
     print("  - All Docker volumes")
     print("  - Installation directory (/opt/smite)")
     print("  - CLI script (/usr/local/bin/smite)")
     print("  - Crontab entries related to smite")
-    print("  - Docker images (ghcr.io/zzedix/smite-panel, ghcr.io/zzedix/smite-nginx)")
+    print("  - Docker images (ghcr.io/zzedix/sm-panel, ghcr.io/zzedix/smite-nginx)")
     print("\n⚠️  ALL DATA WILL BE LOST!")
     print("=" * 60)
     
@@ -793,7 +793,7 @@ def cmd_uninstall(args):
             finally:
                 os.chdir(original_cwd)
         
-        for container in ["smite-panel", "smite-nginx"]:
+        for container in ["sm-panel", "smite-nginx"]:
             subprocess.run(["docker", "stop", container], capture_output=True, check=False)
             subprocess.run(["docker", "rm", "-f", container], capture_output=True, check=False)
         print("  ✓ Containers removed")
@@ -816,7 +816,7 @@ def cmd_uninstall(args):
     # Remove images
     print("\n[3/6] Removing Docker images...")
     try:
-        for image in ["ghcr.io/zzedix/smite-panel", "ghcr.io/zzedix/smite-nginx"]:
+        for image in ["ghcr.io/zzedix/sm-panel", "ghcr.io/zzedix/smite-nginx"]:
             subprocess.run(["docker", "rmi", "-f", image], capture_output=True, check=False)
             subprocess.run(["docker", "rmi", "-f", f"{image}:latest"], capture_output=True, check=False)
             result = subprocess.run(["docker", "images", "--format", "{{.Repository}}:{{.Tag}}", image], 

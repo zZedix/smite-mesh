@@ -4,7 +4,7 @@
 
 Smite uses a **dual-node architecture** with two types of nodes:
 
-- **Iran Nodes**: Act as servers in reverse tunnels and run GOST forwarders
+- **Iran Nodes**: Act as servers in reverse tunnels
 - **Foreign Servers**: Act as clients in reverse tunnels and receive forwarded traffic
 
 Both node types run the same `smite-node` software but with different roles configured.
@@ -77,11 +77,10 @@ cat /path/to/smite/certs/ca-server.crt
 ### Understanding Node Types
 
 #### Iran Nodes
-- **Purpose**: Run tunnel servers and GOST forwarders
+- **Purpose**: Run tunnel servers
 - **Location**: Usually in Iran or restricted regions
 - **Function**: 
-  - Hosts Backhaul/Rathole/Chisel/FRP servers
-  - Forwards traffic via GOST to Foreign servers
+  - Hosts FRP servers
   - Receives overlay IPs from IPAM
   - Participates in WireGuard mesh
 
@@ -212,8 +211,7 @@ PANEL_API_PORT=8000
 **What this node does:**
 - Registers as "iran" role in panel
 - Receives overlay IP from IPAM (e.g., `10.250.0.1`)
-- Can run Backhaul/Rathole/Chisel/FRP servers
-- Can forward traffic via GOST
+- Can run FRP servers
 - Can participate in WireGuard mesh
 
 ### Foreign Server Configuration
@@ -361,7 +359,7 @@ smite-node logs
 
 ### Mesh Not Working
 - Ensure all nodes have overlay IPs
-- Check Backhaul UDP tunnels are created
+- Check FRP tunnels are created
 - Verify WireGuard interfaces are up
 - Check routes are configured
 
