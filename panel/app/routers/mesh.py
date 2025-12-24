@@ -330,7 +330,7 @@ async def apply_mesh(
                     "tunnel_id": tunnel.id,
                     "core": "frp",
                     "type": trans,
-                    "spec": client_spec_prepared
+                    "spec": client_spec
                 }
             )
             if response.get("status") == "error":
