@@ -113,6 +113,23 @@ def cmd_status(args):
 def cmd_update(args):
     """Update node (pull images and recreate)"""
     print("Updating node...")
+    
+    # Ensure SMITE_VERSION is set to 'main' if not set in .env
+    env_file = get_env_file()
+    env_updated = False
+    if env_file.exists():
+        env_content = env_file.read_text()
+        if "SMITE_VERSION=" not in env_content:
+            env_content += "\nSMITE_VERSION=main\n"
+            env_file.write_text(env_content)
+            env_updated = True
+            print("Setting SMITE_VERSION=main in .env file")
+    else:
+        env_file.parent.mkdir(parents=True, exist_ok=True)
+        env_file.write_text("SMITE_VERSION=main\n")
+        env_updated = True
+        print("Created .env file with SMITE_VERSION=main")
+    
     run_docker_compose(["pull"])
     run_docker_compose(["up", "-d", "--force-recreate"])
     print("Node updated.")
