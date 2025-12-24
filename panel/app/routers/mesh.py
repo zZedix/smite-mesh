@@ -338,8 +338,8 @@ async def apply_mesh(
     
     # Step 2: Create FRP clients
     # - Foreign nodes connect to ALL Iran servers with UNIQUE remote_ports (enables Foreign-to-Foreign)
-    # - Iran nodes connect to OTHER Iran servers with shared_wg_port (for Iran-to-Iran connectivity)
-    logger.info(f"Creating FRP clients: {len(foreign_nodes)} Foreign node(s) and {len(iran_nodes)} Iran node(s) connecting to {len(iran_nodes)} Iran server(s)")
+    # - Iran nodes do NOT need FRP clients - they connect directly via WireGuard (no NAT)
+    logger.info(f"Creating FRP clients: {len(foreign_nodes)} Foreign node(s) connecting to {len(iran_nodes)} Iran server(s)")
     
     # Store unique remote_ports for Foreign nodes: foreign_node_remote_ports[node_id][iran_node_id][transport] = remote_port
     foreign_node_remote_ports = {}  # Only for Foreign nodes - enables Foreign-to-Foreign connectivity
