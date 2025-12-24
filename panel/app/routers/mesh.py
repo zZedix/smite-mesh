@@ -359,6 +359,16 @@ async def apply_mesh(
     for node_id in mesh_configs.keys():
         frp_endpoints[node_id] = iran_frp_endpoints
     
+    # Extract listen ports for Iran node (where FRP forwards to)
+    iran_listen_ports = {}
+    for trans, endpoint in iran_frp_endpoints.items():
+        if ":" in endpoint:
+            _, port_str = endpoint.rsplit(":", 1)
+            try:
+                iran_listen_ports[trans] = int(port_str)
+            except ValueError:
+                pass
+    
     for node_id, node_config in mesh_configs.items():
         if node_id not in frp_endpoints:
             logger.warning(f"No FRP endpoint for node {node_id}, skipping WireGuard config")
@@ -369,9 +379,19 @@ async def apply_mesh(
             if peer_id != node_id:
                 peer_endpoints[peer_id] = peer_eps
         
+        # For Iran node, WireGuard must listen on the FRP remote_port (where FRP forwards to)
+        # For Foreign nodes, WireGuard can use any port (it connects to Iran)
+        listen_port = None
+        if node_id == primary_iran_id:
+            # Use UDP port if available, otherwise TCP
+            listen_port = iran_listen_ports.get("udp") or iran_listen_ports.get("tcp")
+            if listen_port:
+                logger.info(f"Iran node {node_id} WireGuard will listen on port {listen_port} (FRP remote_port)")
+        
         wg_config = wireguard_mesh_manager.generate_wireguard_config(
             node_config,
-            peer_endpoints
+            peer_endpoints,
+            listen_port=listen_port
         )
         
         routes = wireguard_mesh_manager.get_peer_routes(node_config)

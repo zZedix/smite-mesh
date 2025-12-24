@@ -177,7 +177,8 @@ class WireGuardMeshManager:
     def generate_wireguard_config(
         self,
         node_config: Dict[str, Any],
-        backhaul_endpoints: Dict[str, Any]
+        backhaul_endpoints: Dict[str, Any],
+        listen_port: Optional[int] = None
     ) -> str:
         """
         Generate WireGuard configuration file content for a node using IPAM-assigned overlay IP
@@ -187,6 +188,7 @@ class WireGuardMeshManager:
             backhaul_endpoints: Dict mapping peer node_id to endpoint(s)
                 - If string: single endpoint (IP:port)
                 - If dict: {"tcp": "IP:port", "udp": "IP:port"} for dual transport
+            listen_port: Optional port for WireGuard to listen on (for FRP compatibility)
         
         Returns:
             WireGuard config file content
@@ -198,6 +200,8 @@ class WireGuardMeshManager:
         lines = ["[Interface]"]
         lines.append(f"PrivateKey = {node_config['private_key']}")
         lines.append(f"Address = {overlay_ip}/32")
+        if listen_port:
+            lines.append(f"ListenPort = {listen_port}")
         lines.append(f"MTU = {node_config['mtu']}")
         lines.append("")
         
