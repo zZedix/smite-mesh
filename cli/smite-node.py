@@ -46,7 +46,7 @@ def get_env_file():
     return Path("/opt/smite-node") / ".env"
 
 
-def run_docker_compose(args, capture_output=False):
+def run_docker_compose(args, capture_output=False, env_vars=None):
     """Run docker compose command"""
     compose_file = get_compose_file()
     if not compose_file.exists():
@@ -65,7 +65,11 @@ def run_docker_compose(args, capture_output=False):
     try:
         os.chdir(compose_dir)
         cmd = ["docker", "compose", "-f", str(compose_file)] + args
-        result = subprocess.run(cmd, capture_output=capture_output, text=True, cwd=str(compose_dir))
+        # Merge environment variables if provided
+        process_env = os.environ.copy()
+        if env_vars:
+            process_env.update(env_vars)
+        result = subprocess.run(cmd, capture_output=capture_output, text=True, cwd=str(compose_dir), env=process_env)
         if not capture_output and result.returncode != 0:
             sys.exit(result.returncode)
         return result
@@ -114,15 +118,30 @@ def cmd_update(args):
     """Update node (pull images and recreate)"""
     print("Updating node...")
     
-    # Ensure SMITE_VERSION is set to 'main' if not set in .env
+    # Ensure SMITE_VERSION is set to 'main' in .env
     env_file = get_env_file()
     env_updated = False
     if env_file.exists():
         env_content = env_file.read_text()
-        if "SMITE_VERSION=" not in env_content:
-            env_content += "\nSMITE_VERSION=main\n"
-            env_file.write_text(env_content)
+        lines = env_content.split('\n')
+        updated_lines = []
+        smite_version_set = False
+        for line in lines:
+            if line.strip().startswith("SMITE_VERSION="):
+                # Update to main if it's set to something else
+                if "SMITE_VERSION=main" not in line:
+                    updated_lines.append("SMITE_VERSION=main")
+                    env_updated = True
+                else:
+                    updated_lines.append(line)
+                smite_version_set = True
+            else:
+                updated_lines.append(line)
+        if not smite_version_set:
+            updated_lines.append("SMITE_VERSION=main")
             env_updated = True
+        if env_updated:
+            env_file.write_text('\n'.join(updated_lines))
             print("Setting SMITE_VERSION=main in .env file")
     else:
         env_file.parent.mkdir(parents=True, exist_ok=True)
@@ -130,8 +149,12 @@ def cmd_update(args):
         env_updated = True
         print("Created .env file with SMITE_VERSION=main")
     
-    run_docker_compose(["pull"])
-    run_docker_compose(["up", "-d", "--force-recreate"])
+    # Ensure environment variable is set for docker compose
+    env_vars = os.environ.copy()
+    env_vars["SMITE_VERSION"] = "main"
+    
+    run_docker_compose(["pull"], env_vars=env_vars)
+    run_docker_compose(["up", "-d", "--force-recreate"], env_vars=env_vars)
     print("Node updated.")
 
 

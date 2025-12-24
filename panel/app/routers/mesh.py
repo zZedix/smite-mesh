@@ -337,21 +337,18 @@ async def apply_mesh(
         )
     
     # Step 2: Create FRP clients
-    # - Foreign nodes connect to ALL Iran servers (to expose their WireGuard)
-    # - Iran nodes connect to OTHER Iran servers (for Iran-to-Iran connectivity via FRP)
+    # - Foreign nodes connect to ALL Iran servers with UNIQUE remote_ports (enables Foreign-to-Foreign)
+    # - Iran nodes connect to OTHER Iran servers with shared_wg_port (for Iran-to-Iran connectivity)
     logger.info(f"Creating FRP clients: {len(foreign_nodes)} Foreign node(s) and {len(iran_nodes)} Iran node(s) connecting to {len(iran_nodes)} Iran server(s)")
     
-    # Create FRP clients for ALL nodes (both Iran and Foreign) connecting to ALL Iran servers
-    # This enables: Foreign->Iran (Foreign clients), Iran->Iran (Iran clients connecting to other Iran servers)
-    all_nodes = [(node_id, node, "foreign") for node_id, node, _ in foreign_nodes] + \
-                [(node_id, node, "iran") for node_id, node, _ in iran_nodes]
+    # Store unique remote_ports for Foreign nodes: foreign_node_remote_ports[node_id][iran_node_id][transport] = remote_port
+    foreign_node_remote_ports = {}  # Only for Foreign nodes - enables Foreign-to-Foreign connectivity
     
-    for node_id, node, node_role in all_nodes:
+    # Create FRP clients for Foreign nodes with unique remote_ports
+    for foreign_node_id, foreign_node, _ in foreign_nodes:
+        foreign_node_remote_ports[foreign_node_id] = {}
+        
         for iran_node_id, iran_node, _ in iran_nodes:
-            # Skip if node is trying to connect to itself
-            if node_id == iran_node_id:
-                continue
-            
             iran_node_ip = iran_node.node_metadata.get("ip_address")
             if not iran_node_ip:
                 logger.warning(f"Iran node {iran_node_id} has no IP address, skipping")
@@ -359,6 +356,8 @@ async def apply_mesh(
             
             if iran_node_id not in iran_node_endpoints:
                 continue
+            
+            foreign_node_remote_ports[foreign_node_id][iran_node_id] = {}
             
             for trans in transports_to_create:
                 if trans not in iran_node_endpoints[iran_node_id]:
@@ -372,17 +371,111 @@ async def apply_mesh(
                 port_hash = int(hashlib.md5(f"{mesh_id}-{iran_node_id}-{trans}".encode()).hexdigest()[:8], 16)
                 bind_port = 7000 + (port_hash % 1000)
                 
-                # Use shared WireGuard port (same as server)
-                wg_port = shared_wg_port
+                # Generate UNIQUE remote_port for each Foreign node on each Iran server
+                # This enables Foreign-to-Foreign connectivity (each Foreign node has unique endpoint)
+                remote_port_hash = int(hashlib.md5(f"{mesh_id}-{foreign_node_id}-{iran_node_id}-{trans}".encode()).hexdigest()[:8], 16)
+                unique_remote_port = 18000 + (remote_port_hash % 1000)  # Different port range from shared_wg_port
+                foreign_node_remote_ports[foreign_node_id][iran_node_id][trans] = unique_remote_port
                 
-                tunnel_name = f"wg-mesh-{mesh_id[:8]}-{node_id[:8]}-to-{iran_node_id[:8]}-{trans}-client"
+                # WireGuard listens on shared_wg_port (local_port), but remote_port is unique per Foreign node
+                local_port = shared_wg_port
+                
+                tunnel_name = f"wg-mesh-{mesh_id[:8]}-{foreign_node_id[:8]}-to-{iran_node_id[:8]}-{trans}-client"
                 
                 # Create tunnel record
                 tunnel = Tunnel(
                     name=tunnel_name,
                     core="frp",
                     type=trans,
-                    node_id=node_id,
+                    node_id=foreign_node_id,
+                    spec={
+                        "mode": "client",
+                        "server_addr": iran_ip,
+                        "server_port": bind_port,
+                        "type": trans,
+                        "local_ip": "127.0.0.1",
+                        "local_port": local_port,
+                        "remote_port": unique_remote_port,  # Unique per Foreign node
+                    },
+                    status="pending"
+                )
+                db.add(tunnel)
+                await db.commit()
+                await db.refresh(tunnel)
+                
+                # Apply FRP client to Foreign node
+                try:
+                    client_spec = {
+                        "mode": "client",
+                        "server_addr": iran_ip,
+                        "server_port": bind_port,
+                        "type": trans,
+                        "local_ip": "127.0.0.1",
+                        "local_port": local_port,
+                        "remote_port": unique_remote_port,  # Unique per Foreign node
+                    }
+                    
+                    response = await node_client.send_to_node(
+                        node_id=foreign_node_id,
+                        endpoint="/api/agent/tunnels/apply",
+                        data={
+                            "tunnel_id": tunnel.id,
+                            "core": "frp",
+                            "type": trans,
+                            "spec": client_spec
+                        }
+                    )
+                    if response.get("status") == "error":
+                        raise RuntimeError(f"Failed to apply FRP client: {response.get('message')}")
+                    
+                    tunnel.status = "active"
+                    await db.commit()
+                    
+                    logger.info(f"Created FRP {trans} client on Foreign node {foreign_node_id} connecting to Iran {iran_node_id}: {iran_ip}:{bind_port} -> remote_port={unique_remote_port}, local_port={local_port}")
+                except Exception as e:
+                    logger.error(f"Failed to create FRP client on Foreign node {foreign_node_id} to Iran {iran_node_id}: {e}", exc_info=True)
+                    tunnel.status = "error"
+                    tunnel.error_message = str(e)
+                    await db.commit()
+                    continue
+    
+    # Create FRP clients for Iran nodes connecting to other Iran servers (use shared_wg_port for Iran-to-Iran)
+    for iran_node_id, iran_node, _ in iran_nodes:
+        for other_iran_node_id, other_iran_node, _ in iran_nodes:
+            # Skip if connecting to itself
+            if iran_node_id == other_iran_node_id:
+                continue
+            
+            other_iran_node_ip = other_iran_node.node_metadata.get("ip_address")
+            if not other_iran_node_ip:
+                logger.warning(f"Iran node {other_iran_node_id} has no IP address, skipping")
+                continue
+            
+            if other_iran_node_id not in iran_node_endpoints:
+                continue
+            
+            for trans in transports_to_create:
+                if trans not in iran_node_endpoints[other_iran_node_id]:
+                    continue
+                
+                endpoint = iran_node_endpoints[other_iran_node_id][trans]
+                iran_ip, _ = endpoint.rsplit(":", 1)
+                
+                # Calculate bind_port the same way as server (unique per Iran node)
+                port_hash = int(hashlib.md5(f"{mesh_id}-{other_iran_node_id}-{trans}".encode()).hexdigest()[:8], 16)
+                bind_port = 7000 + (port_hash % 1000)
+                
+                # Iran nodes use shared_wg_port for both local_port and remote_port (Iran-to-Iran)
+                wg_port = shared_wg_port
+                
+                tunnel_name = f"wg-mesh-{mesh_id[:8]}-{iran_node_id[:8]}-to-{other_iran_node_id[:8]}-{trans}-client"
+                
+                # Create tunnel record
+                tunnel = Tunnel(
+                    name=tunnel_name,
+                    core="frp",
+                    type=trans,
+                    node_id=iran_node_id,
                     spec={
                         "mode": "client",
                         "server_addr": iran_ip,
@@ -398,7 +491,7 @@ async def apply_mesh(
                 await db.commit()
                 await db.refresh(tunnel)
                 
-                # Apply FRP client to node
+                # Apply FRP client to Iran node
                 try:
                     client_spec = {
                         "mode": "client",
@@ -411,7 +504,7 @@ async def apply_mesh(
                     }
                     
                     response = await node_client.send_to_node(
-                        node_id=node_id,
+                        node_id=iran_node_id,
                         endpoint="/api/agent/tunnels/apply",
                         data={
                             "tunnel_id": tunnel.id,
@@ -426,9 +519,9 @@ async def apply_mesh(
                     tunnel.status = "active"
                     await db.commit()
                     
-                    logger.info(f"Created FRP {trans} client on {node_role} node {node_id} connecting to Iran {iran_node_id}: {endpoint}")
+                    logger.info(f"Created FRP {trans} client on Iran node {iran_node_id} connecting to Iran {other_iran_node_id}: {endpoint}")
                 except Exception as e:
-                    logger.error(f"Failed to create FRP client on {node_role} node {node_id} to Iran {iran_node_id}: {e}", exc_info=True)
+                    logger.error(f"Failed to create FRP client on Iran node {iran_node_id} to Iran {other_iran_node_id}: {e}", exc_info=True)
                     tunnel.status = "error"
                     tunnel.error_message = str(e)
                     await db.commit()
@@ -469,20 +562,23 @@ async def apply_mesh(
             
             if peer_role == "iran":
                 # Peer is Iran node: Use its own FRP server endpoint directly
-                # Iran nodes connect directly to each other's FRP servers (no FRP client needed)
                 if peer_id in iran_node_endpoints:
                     peer_endpoint_map = iran_node_endpoints[peer_id].copy()
                     logger.info(f"Node {node_id} -> Iran peer {peer_id}: using Iran's FRP server endpoint")
             else:
-                # Peer is Foreign node: Use any Iran server endpoint
-                # The Iran server forwards traffic to the Foreign node's WireGuard (listening on local_port)
-                # All Foreign nodes connect to all Iran servers, so we can use any Iran endpoint
-                # Use the first Iran node's endpoint for consistency
-                if iran_nodes:
-                    first_iran_id, _, _ = iran_nodes[0]
-                    if first_iran_id in iran_node_endpoints:
-                        peer_endpoint_map = iran_node_endpoints[first_iran_id].copy()
-                        logger.info(f"Node {node_id} -> Foreign peer {peer_id}: using Iran server {first_iran_id} endpoint (forwards to Foreign)")
+                # Peer is Foreign node: Use Foreign node's unique remote_port on an Iran server
+                # Each Foreign node has a unique remote_port on each Iran server for Foreign-to-Foreign connectivity
+                # We can use any Iran server's IP with the Foreign node's unique remote_port
+                if peer_id in foreign_node_remote_ports and iran_nodes:
+                    first_iran_id, first_iran_node, _ = iran_nodes[0]
+                    first_iran_ip = first_iran_node.node_metadata.get("ip_address")
+                    if first_iran_ip and first_iran_id in foreign_node_remote_ports[peer_id]:
+                        # Build endpoint map with Foreign peer's unique remote_ports
+                        for trans in transports_to_create:
+                            if trans in foreign_node_remote_ports[peer_id][first_iran_id]:
+                                unique_remote_port = foreign_node_remote_ports[peer_id][first_iran_id][trans]
+                                peer_endpoint_map[trans] = f"{first_iran_ip}:{unique_remote_port}"
+                        logger.info(f"Node {node_id} -> Foreign peer {peer_id}: using Foreign's unique remote_port on Iran server {first_iran_id}")
             
             if peer_endpoint_map:
                 frp_endpoints[node_id][peer_id] = peer_endpoint_map
