@@ -83,7 +83,6 @@ class WireGuardAdapter:
                     logger.warning(f"ip link delete failed: {result.stderr}")
                 
                 # Wait a bit for interface to be fully removed
-                import time
                 time.sleep(0.5)
                 
                 # Verify interface is gone
