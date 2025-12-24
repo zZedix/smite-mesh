@@ -127,50 +127,70 @@ class WireGuardAdapter:
                 break
         
         if overlay_ip:
-            # Check if this IP is already assigned to any interface and remove it
+            # Aggressively remove IP from any interface that might have it
             try:
+                # First, try to remove from the target interface
+                logger.info(f"Checking for existing IP assignment: {overlay_ip}")
+                subprocess.run(
+                    ["ip", "addr", "del", f"{overlay_ip}/32", "dev", interface_name],
+                    check=False,
+                    capture_output=True,
+                    timeout=2
+                )
+                
+                # Get list of all interfaces
                 result = subprocess.run(
-                    ["ip", "addr", "show"],
+                    ["ip", "-o", "addr", "show"],
                     capture_output=True,
                     text=True,
                     timeout=5
                 )
+                
                 if overlay_ip in result.stdout:
-                    # Parse output to find which interface has this IP
-                    current_iface = None
+                    # Parse -o format: "2: wg-xxx    inet 10.250.0.1/32 ..."
                     for line in result.stdout.splitlines():
-                        # Interface lines start with a number (e.g., "2: wg-xxx: ...")
-                        if line.strip() and line[0].isdigit() and ":" in line:
+                        if overlay_ip in line and "inet" in line:
+                            parts = line.split()
+                            if len(parts) >= 2:
+                                # Extract interface name (second field)
+                                iface_with_ip = parts[1].strip()
+                                if iface_with_ip != interface_name:
+                                    logger.warning(f"IP {overlay_ip} found on interface {iface_with_ip}, removing it")
+                                    # Try different CIDR formats
+                                    for cidr_format in [f"{overlay_ip}/32", overlay_ip, f"{overlay_ip}/128"]:
+                                        subprocess.run(
+                                            ["ip", "addr", "del", cidr_format, "dev", iface_with_ip],
+                                            check=False,
+                                            capture_output=True,
+                                            timeout=2
+                                        )
+                
+                # Also check using grep for any WireGuard interfaces
+                wg_result = subprocess.run(
+                    ["ip", "link", "show", "type", "wireguard"],
+                    capture_output=True,
+                    text=True,
+                    timeout=5
+                )
+                if wg_result.returncode == 0:
+                    # Extract interface names from output
+                    for line in wg_result.stdout.splitlines():
+                        if ":" in line:
                             parts = line.split(":", 2)
                             if len(parts) >= 2:
-                                current_iface = parts[1].strip()
-                        # IP address lines contain "inet" and the IP
-                        elif overlay_ip in line and "inet" in line:
-                            if current_iface:
-                                logger.warning(f"IP {overlay_ip} is already assigned to interface {current_iface}, removing it")
-                                # Try to remove it from the interface
-                                subprocess.run(
-                                    ["ip", "addr", "del", f"{overlay_ip}/32", "dev", current_iface],
-                                    check=False,
-                                    capture_output=True,
-                                    timeout=2
-                                )
-                                # Also try with /32 explicitly in case it's formatted differently
-                                subprocess.run(
-                                    ["ip", "addr", "del", f"{overlay_ip}", "dev", current_iface],
-                                    check=False,
-                                    capture_output=True,
-                                    timeout=2
-                                )
-                    # Also try to remove from the interface we're about to create (in case it exists)
-                    subprocess.run(
-                        ["ip", "addr", "del", f"{overlay_ip}/32", "dev", interface_name],
-                        check=False,
-                        capture_output=True,
-                        timeout=2
-                    )
+                                wg_iface = parts[1].strip().split("@")[0]  # Remove @eth0 suffix if present
+                                if wg_iface and wg_iface != interface_name:
+                                    logger.info(f"Attempting to remove IP {overlay_ip} from WireGuard interface {wg_iface}")
+                                    for cidr_format in [f"{overlay_ip}/32", overlay_ip]:
+                                        subprocess.run(
+                                            ["ip", "addr", "del", cidr_format, "dev", wg_iface],
+                                            check=False,
+                                            capture_output=True,
+                                            timeout=2
+                                        )
+                                        
             except Exception as e:
-                logger.debug(f"Could not check for existing IP assignment: {e}")
+                logger.warning(f"Error during IP cleanup: {e}")
         
         # Write config file
         config_path.write_text(wg_config, encoding="utf-8")
