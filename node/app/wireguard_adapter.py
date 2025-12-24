@@ -56,20 +56,36 @@ class WireGuardAdapter:
             raise ValueError("WireGuard config is required in spec")
         
         # Check if interface already exists and bring it down first
+        # Also check for any existing config file and bring it down
+        if config_path.exists():
+            logger.info(f"Existing WireGuard config found at {config_path}, bringing it down first")
+            try:
+                result = subprocess.run(
+                    [self.wg_quick_binary, "down", str(config_path)],
+                    check=False,
+                    capture_output=True,
+                    text=True,
+                    timeout=5
+                )
+                if result.returncode == 0:
+                    logger.info(f"Successfully brought down existing WireGuard config")
+                else:
+                    logger.warning(f"wg-quick down failed: {result.stderr}")
+                time.sleep(0.3)
+            except Exception as e:
+                logger.warning(f"Error bringing down existing config: {e}")
+        
         if self._interface_exists(interface_name):
             logger.info(f"WireGuard interface {interface_name} already exists, bringing it down first")
             try:
-                # Try wg-quick down first
-                if config_path.exists():
-                    result = subprocess.run(
-                        [self.wg_quick_binary, "down", str(config_path)],
-                        check=False,
-                        capture_output=True,
-                        text=True,
-                        timeout=5
-                    )
-                    if result.returncode != 0:
-                        logger.warning(f"wg-quick down failed: {result.stderr}")
+                # Try wg-quick down first (even if config doesn't exist, try with interface name)
+                result = subprocess.run(
+                    [self.wg_quick_binary, "down", interface_name],
+                    check=False,
+                    capture_output=True,
+                    text=True,
+                    timeout=5
+                )
                 
                 # Also try direct ip link delete as fallback
                 result = subprocess.run(
