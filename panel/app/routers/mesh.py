@@ -179,7 +179,9 @@ async def apply_mesh(
     node_client = NodeClient()
     backhaul_endpoints = {}
     
-    transports_to_create = ["tcp", "udp"] if transport == "both" else [transport]
+    # Separate Iran and Foreign nodes
+    iran_nodes = []
+    foreign_nodes = []
     
     for node_id, node_config in mesh_configs.items():
         node_result = await db.execute(
@@ -190,23 +192,75 @@ async def apply_mesh(
             logger.warning(f"Node {node_id} not found, skipping")
             continue
         
+        node_role = node.node_metadata.get("role", "iran")
+        if node_role == "iran":
+            iran_nodes.append((node_id, node, node_config))
+        else:
+            foreign_nodes.append((node_id, node, node_config))
+    
+    if not iran_nodes:
+        raise HTTPException(
+            status_code=400,
+            detail="At least one Iran node is required for mesh. Iran nodes run Backhaul servers."
+        )
+    
+    if len(iran_nodes) > 1:
+        logger.warning(f"Multiple Iran nodes found ({len(iran_nodes)}). Using first one as primary Backhaul server.")
+    
+    # Use first Iran node as the Backhaul server hub
+    primary_iran_id, primary_iran_node, _ = iran_nodes[0]
+    
+    transports_to_create = ["tcp", "udp"] if transport == "both" else [transport]
+    
+    # Create Backhaul servers on Iran nodes only
+    iran_endpoints = {}
+    for iran_id, iran_node, iran_config in iran_nodes:
         node_endpoints = {}
         for trans in transports_to_create:
-            logger.info(f"Ensuring Backhaul {trans} tunnel for node {node_id} in mesh {mesh_id}")
-            backhaul_endpoint = await _ensure_backhaul_tunnel(
-                mesh_id, node_id, node, node_config, db, request, node_client, trans
+            logger.info(f"Creating Backhaul {trans} server on Iran node {iran_id} in mesh {mesh_id}")
+            backhaul_endpoint = await _ensure_backhaul_server(
+                mesh_id, iran_id, iran_node, iran_config, db, request, node_client, trans
             )
             if backhaul_endpoint:
-                logger.info(f"Backhaul {trans} endpoint for node {node_id}: {backhaul_endpoint}")
+                logger.info(f"Backhaul {trans} server endpoint for Iran node {iran_id}: {backhaul_endpoint}")
                 node_endpoints[trans] = backhaul_endpoint
             else:
-                logger.warning(f"Failed to create Backhaul {trans} tunnel for node {node_id}")
+                logger.warning(f"Failed to create Backhaul {trans} server on Iran node {iran_id}")
         
         if node_endpoints:
-            backhaul_endpoints[node_id] = node_endpoints
-            logger.info(f"Node {node_id} has {len(node_endpoints)} backhaul endpoints: {list(node_endpoints.keys())}")
-        else:
-            logger.error(f"Node {node_id} has no backhaul endpoints!")
+            iran_endpoints[iran_id] = node_endpoints
+    
+    if not iran_endpoints:
+        raise HTTPException(
+            status_code=500,
+            detail="Failed to create Backhaul servers on Iran nodes"
+        )
+    
+    # Use primary Iran node's endpoints for all nodes (including other Iran nodes and Foreign nodes)
+    primary_iran_endpoints = iran_endpoints.get(primary_iran_id, {})
+    if not primary_iran_endpoints:
+        primary_iran_endpoints = list(iran_endpoints.values())[0]
+    
+    # Create Backhaul clients on Foreign nodes connecting to Iran
+    for foreign_id, foreign_node, foreign_config in foreign_nodes:
+        for trans in transports_to_create:
+            logger.info(f"Creating Backhaul {trans} client on Foreign node {foreign_id} connecting to Iran {primary_iran_id}")
+            iran_endpoint = primary_iran_endpoints.get(trans)
+            if iran_endpoint:
+                await _ensure_backhaul_client(
+                    mesh_id, foreign_id, foreign_node, primary_iran_node, iran_endpoint, db, request, node_client, trans
+                )
+        
+        # Foreign nodes use Iran's endpoints for WireGuard
+        backhaul_endpoints[foreign_id] = primary_iran_endpoints
+    
+    # Primary Iran node uses its own endpoints (it's the server)
+    backhaul_endpoints[primary_iran_id] = primary_iran_endpoints
+    
+    # Other Iran nodes also use primary Iran's endpoints
+    for iran_id, _, _ in iran_nodes:
+        if iran_id != primary_iran_id:
+            backhaul_endpoints[iran_id] = primary_iran_endpoints
     
     for node_id, node_config in mesh_configs.items():
         if node_id not in backhaul_endpoints:
@@ -255,7 +309,7 @@ async def apply_mesh(
     return {"status": "success", "message": "Mesh applied to all nodes"}
 
 
-async def _ensure_backhaul_tunnel(
+async def _ensure_backhaul_server(
     mesh_id: str,
     node_id: str,
     node: Node,
@@ -265,7 +319,7 @@ async def _ensure_backhaul_tunnel(
     node_client: NodeClient,
     transport: str = "udp"
 ) -> Optional[str]:
-    """Ensure Backhaul server exists for node, return endpoint"""
+    """Ensure Backhaul server exists on Iran node, return endpoint"""
     import hashlib
     
     if transport not in ["tcp", "udp"]:
@@ -368,6 +422,97 @@ async def _ensure_backhaul_tunnel(
     
     # WireGuard should connect to control_port (where Backhaul server listens), not public_port
     return f"{node_ip}:{control_port}"
+
+
+async def _ensure_backhaul_client(
+    mesh_id: str,
+    foreign_node_id: str,
+    foreign_node: Node,
+    iran_node: Node,
+    iran_endpoint: str,
+    db: AsyncSession,
+    request: Request,
+    node_client: NodeClient,
+    transport: str = "udp"
+) -> None:
+    """Ensure Backhaul client exists on Foreign node connecting to Iran server"""
+    import hashlib
+    
+    if transport not in ["tcp", "udp"]:
+        transport = "udp"
+    
+    tunnel_name = f"wg-mesh-{mesh_id[:8]}-{transport}-{foreign_node_id[:8]}"
+    
+    existing_result = await db.execute(
+        select(Tunnel).where(
+            Tunnel.name == tunnel_name,
+            Tunnel.core == "backhaul",
+            Tunnel.type == transport,
+            Tunnel.node_id == foreign_node_id
+        )
+    )
+    existing_tunnel = existing_result.scalar_one_or_none()
+    
+    if existing_tunnel:
+        logger.info(f"Deleting existing Backhaul client tunnel {existing_tunnel.id} for Foreign node {foreign_node_id}")
+        try:
+            await node_client.send_to_node(
+                node_id=foreign_node_id,
+                endpoint="/api/agent/tunnels/remove",
+                data={"tunnel_id": existing_tunnel.id}
+            )
+        except Exception as e:
+            logger.warning(f"Error removing old tunnel from Foreign node {foreign_node_id}: {e}")
+        
+        await db.delete(existing_tunnel)
+        await db.commit()
+        logger.info(f"Deleted old Backhaul client tunnel {existing_tunnel.id}, will create new one")
+    
+    # Parse Iran endpoint to get IP and port
+    if ":" in iran_endpoint:
+        iran_ip, iran_port = iran_endpoint.rsplit(":", 1)
+    else:
+        logger.error(f"Invalid Iran endpoint format: {iran_endpoint}")
+        return
+    
+    spec = {
+        "mode": "client",
+        "transport": transport,
+        "remote_addr": iran_endpoint,
+    }
+    
+    logger.info(f"Creating Backhaul client on Foreign node {foreign_node_id} connecting to Iran {iran_endpoint}")
+    
+    tunnel = Tunnel(
+        name=tunnel_name,
+        core="backhaul",
+        type=transport,
+        node_id=foreign_node_id,
+        spec=spec,
+        status="active"
+    )
+    db.add(tunnel)
+    await db.commit()
+    await db.refresh(tunnel)
+    
+    try:
+        logger.info(f"Applying Backhaul client tunnel {tunnel.id} to Foreign node {foreign_node_id}")
+        response = await node_client.send_to_node(
+            node_id=foreign_node_id,
+            endpoint="/api/agent/tunnels/apply",
+            data={
+                "tunnel_id": tunnel.id,
+                "core": "backhaul",
+                "type": transport,
+                "spec": spec
+            }
+        )
+        if response.get("status") == "error":
+            logger.error(f"Failed to create Backhaul client tunnel {tunnel.id} on Foreign node {foreign_node_id}: {response.get('message')}")
+        else:
+            logger.info(f"Successfully applied Backhaul client tunnel {tunnel.id} to Foreign node {foreign_node_id}")
+    except Exception as e:
+        logger.error(f"Error creating Backhaul client tunnel {tunnel.id} on Foreign node {foreign_node_id}: {e}", exc_info=True)
 
 
 @router.get("/{mesh_id}/status")
