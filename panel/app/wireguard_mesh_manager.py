@@ -214,18 +214,15 @@ class WireGuardMeshManager:
             allowed_ips_str = ', '.join(allowed_ips)
             
             if isinstance(endpoints, dict) and "udp" in endpoints and "tcp" in endpoints:
+                # When both UDP and TCP are available, use UDP (preferred for WireGuard)
+                # WireGuard doesn't support duplicate peers with the same public key,
+                # so we only create one [Peer] block with the UDP endpoint
+                endpoint = endpoints['udp']
+                logger.info(f"Both UDP and TCP endpoints available for peer {peer_id}, using UDP: {endpoint}")
                 lines.append("[Peer]")
                 lines.append(f"PublicKey = {peer['public_key']}")
                 lines.append(f"AllowedIPs = {allowed_ips_str}")
-                lines.append(f"Endpoint = {endpoints['udp']}")
-                lines.append("PersistentKeepalive = 25")
-                lines.append("")
-                
-                lines.append(f"# TCP endpoint for {peer_id} (same peer, different transport)")
-                lines.append("[Peer]")
-                lines.append(f"PublicKey = {peer['public_key']}")
-                lines.append(f"AllowedIPs = {allowed_ips_str}")
-                lines.append(f"Endpoint = {endpoints['tcp']}")
+                lines.append(f"Endpoint = {endpoint}")
                 lines.append("PersistentKeepalive = 25")
                 lines.append("")
             else:

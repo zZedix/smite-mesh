@@ -123,7 +123,7 @@ jobs:
             type=ref,event=pr
             type=semver,pattern={{version}},enable=${{ github.ref_type == 'tag' && steps.has-version.outputs.has_version == 'true' }}
             type=semver,pattern={{major}}.{{minor}},enable=${{ github.ref_type == 'tag' && steps.has-version.outputs.has_version == 'true' }}
-            type=raw,value=${{ steps.version.outputs.version }},enable=${{ steps.has-version.outputs.has_version == 'true' && steps.version.outputs.version != 'latest' && github.ref != 'refs/heads/tst' }}
+            type=raw,value=${{ steps.version.outputs.version }},enable=${{ steps.has-version.outputs.has_version == 'true' && steps.version.outputs.version != 'latest' && github.ref != 'refs/heads/tst' && (github.ref == 'refs/heads/main' || github.ref_type == 'tag') }}
             type=sha,enable=${{ github.ref != 'refs/heads/main' && github.ref != 'refs/heads/tst' }}
             type=raw,value=latest,enable=${{ steps.tag-latest.outputs.should_tag == 'true' && github.ref != 'refs/heads/tst' }}
 
@@ -153,7 +153,7 @@ jobs:
             type=ref,event=pr
             type=semver,pattern={{version}},enable=${{ github.ref_type == 'tag' && steps.has-version.outputs.has_version == 'true' }}
             type=semver,pattern={{major}}.{{minor}},enable=${{ github.ref_type == 'tag' && steps.has-version.outputs.has_version == 'true' }}
-            type=raw,value=${{ steps.version.outputs.version }},enable=${{ steps.has-version.outputs.has_version == 'true' && steps.version.outputs.version != 'latest' && github.ref != 'refs/heads/tst' }}
+            type=raw,value=${{ steps.version.outputs.version }},enable=${{ steps.has-version.outputs.has_version == 'true' && steps.version.outputs.version != 'latest' && github.ref != 'refs/heads/tst' && (github.ref == 'refs/heads/main' || github.ref_type == 'tag') }}
             type=sha,enable=${{ github.ref != 'refs/heads/main' && github.ref != 'refs/heads/tst' }}
             type=raw,value=latest,enable=${{ steps.tag-latest.outputs.should_tag == 'true' && github.ref != 'refs/heads/tst' }}
 
