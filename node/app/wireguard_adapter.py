@@ -127,7 +127,7 @@ class WireGuardAdapter:
                 break
         
         if overlay_ip:
-            # Check if this IP is already assigned to another interface
+            # Check if this IP is already assigned to any interface and remove it
             try:
                 result = subprocess.run(
                     ["ip", "addr", "show"],
@@ -136,25 +136,39 @@ class WireGuardAdapter:
                     timeout=5
                 )
                 if overlay_ip in result.stdout:
-                    # Find which interface has this IP
+                    # Parse output to find which interface has this IP
+                    current_iface = None
                     for line in result.stdout.splitlines():
-                        if overlay_ip in line and "inet" in line:
-                            # Extract interface name (e.g., "wg-xxxxx")
-                            parts = line.split()
-                            if len(parts) > 1:
-                                # Look for interface name in previous lines
-                                logger.warning(f"IP {overlay_ip} is already assigned, checking interfaces...")
-                                # Try to remove it from any existing interface
-                                for wg_iface in ["wg-" + mesh_id[:8]] + [f"wg-{mesh_id[:8]}-{i}" for i in range(10)]:
-                                    try:
-                                        subprocess.run(
-                                            ["ip", "addr", "del", f"{overlay_ip}/32", "dev", wg_iface],
-                                            check=False,
-                                            capture_output=True,
-                                            timeout=2
-                                        )
-                                    except:
-                                        pass
+                        # Interface lines start with a number (e.g., "2: wg-xxx: ...")
+                        if line.strip() and line[0].isdigit() and ":" in line:
+                            parts = line.split(":", 2)
+                            if len(parts) >= 2:
+                                current_iface = parts[1].strip()
+                        # IP address lines contain "inet" and the IP
+                        elif overlay_ip in line and "inet" in line:
+                            if current_iface:
+                                logger.warning(f"IP {overlay_ip} is already assigned to interface {current_iface}, removing it")
+                                # Try to remove it from the interface
+                                subprocess.run(
+                                    ["ip", "addr", "del", f"{overlay_ip}/32", "dev", current_iface],
+                                    check=False,
+                                    capture_output=True,
+                                    timeout=2
+                                )
+                                # Also try with /32 explicitly in case it's formatted differently
+                                subprocess.run(
+                                    ["ip", "addr", "del", f"{overlay_ip}", "dev", current_iface],
+                                    check=False,
+                                    capture_output=True,
+                                    timeout=2
+                                )
+                    # Also try to remove from the interface we're about to create (in case it exists)
+                    subprocess.run(
+                        ["ip", "addr", "del", f"{overlay_ip}/32", "dev", interface_name],
+                        check=False,
+                        capture_output=True,
+                        timeout=2
+                    )
             except Exception as e:
                 logger.debug(f"Could not check for existing IP assignment: {e}")
         
