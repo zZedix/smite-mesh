@@ -472,15 +472,19 @@ async def apply_mesh(
                 continue
             
             peer_role = peer_node.node_metadata.get("role", "iran")
+            peer_ip = peer_node.node_metadata.get("ip_address")
             
             # Determine endpoint for this peer
             peer_endpoint_map = {}
             
             if peer_role == "iran":
-                # Peer is Iran node: Use its own FRP server endpoint directly
-                if peer_id in iran_node_endpoints:
-                    peer_endpoint_map = iran_node_endpoints[peer_id].copy()
-                    logger.info(f"Node {node_id} -> Iran peer {peer_id}: using Iran's FRP server endpoint")
+                # Peer is Iran node: Use direct IP address with shared_wg_port (Iran nodes connect directly, no FRP)
+                if peer_ip:
+                    for trans in transports_to_create:
+                        peer_endpoint_map[trans] = f"{peer_ip}:{shared_wg_port}"
+                    logger.info(f"Node {node_id} -> Iran peer {peer_id}: using direct IP {peer_ip}:{shared_wg_port} (no FRP)")
+                else:
+                    logger.warning(f"Iran peer {peer_id} has no IP address")
             else:
                 # Peer is Foreign node: Use Foreign node's unique remote_port on an Iran server
                 # Each Foreign node has a unique remote_port on each Iran server for Foreign-to-Foreign connectivity
