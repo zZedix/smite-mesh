@@ -379,14 +379,19 @@ async def apply_mesh(
             if peer_id != node_id:
                 peer_endpoints[peer_id] = peer_eps
         
-        # For Iran node, WireGuard must listen on the FRP remote_port (where FRP forwards to)
-        # For Foreign nodes, WireGuard can use any port (it connects to Iran)
+        # FRP reverse tunnel forwards remotePort (on server/Iran) to localPort (on client/Foreign)
+        # So Foreign WireGuard should listen on local_port (where FRP forwards to)
+        # Iran WireGuard should connect to remote_port (which goes through FRP to Foreign)
+        # But we need bidirectional - so both need to work
+        # For now, don't set ListenPort on Iran - let it use default
+        # Foreign WireGuard will listen on local_port
         listen_port = None
-        if node_id == primary_iran_id:
+        if node_id != primary_iran_id:  # Foreign nodes
+            # Foreign WireGuard should listen on local_port (where FRP forwards to)
             # Use UDP port if available, otherwise TCP
             listen_port = iran_listen_ports.get("udp") or iran_listen_ports.get("tcp")
             if listen_port:
-                logger.info(f"Iran node {node_id} WireGuard will listen on port {listen_port} (FRP remote_port)")
+                logger.info(f"Foreign node {node_id} WireGuard will listen on port {listen_port} (FRP local_port)")
         
         wg_config = wireguard_mesh_manager.generate_wireguard_config(
             node_config,
