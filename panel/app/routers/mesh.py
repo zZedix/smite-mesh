@@ -336,13 +336,22 @@ async def apply_mesh(
             detail="Failed to create FRP servers on any Iran node"
         )
     
-    # Step 2: Create FRP clients for Foreign nodes connecting to ALL Iran servers
-    # Iran nodes do NOT need FRP clients - they connect directly to each other's FRP server endpoints
-    # Only Foreign nodes need FRP clients to expose their WireGuard through Iran servers
-    logger.info(f"Creating FRP clients for {len(foreign_nodes)} Foreign node(s) connecting to {len(iran_nodes)} Iran server(s)")
+    # Step 2: Create FRP clients
+    # - Foreign nodes connect to ALL Iran servers (to expose their WireGuard)
+    # - Iran nodes connect to OTHER Iran servers (for Iran-to-Iran connectivity via FRP)
+    logger.info(f"Creating FRP clients: {len(foreign_nodes)} Foreign node(s) and {len(iran_nodes)} Iran node(s) connecting to {len(iran_nodes)} Iran server(s)")
     
-    for foreign_node_id, foreign_node, _ in foreign_nodes:
+    # Create FRP clients for ALL nodes (both Iran and Foreign) connecting to ALL Iran servers
+    # This enables: Foreign->Iran (Foreign clients), Iran->Iran (Iran clients connecting to other Iran servers)
+    all_nodes = [(node_id, node, "foreign") for node_id, node, _ in foreign_nodes] + \
+                [(node_id, node, "iran") for node_id, node, _ in iran_nodes]
+    
+    for node_id, node, node_role in all_nodes:
         for iran_node_id, iran_node, _ in iran_nodes:
+            # Skip if node is trying to connect to itself
+            if node_id == iran_node_id:
+                continue
+            
             iran_node_ip = iran_node.node_metadata.get("ip_address")
             if not iran_node_ip:
                 logger.warning(f"Iran node {iran_node_id} has no IP address, skipping")
@@ -366,14 +375,14 @@ async def apply_mesh(
                 # Use shared WireGuard port (same as server)
                 wg_port = shared_wg_port
                 
-                tunnel_name = f"wg-mesh-{mesh_id[:8]}-{foreign_node_id[:8]}-to-{iran_node_id[:8]}-{trans}-client"
+                tunnel_name = f"wg-mesh-{mesh_id[:8]}-{node_id[:8]}-to-{iran_node_id[:8]}-{trans}-client"
                 
                 # Create tunnel record
                 tunnel = Tunnel(
                     name=tunnel_name,
                     core="frp",
                     type=trans,
-                    node_id=foreign_node_id,
+                    node_id=node_id,
                     spec={
                         "mode": "client",
                         "server_addr": iran_ip,
@@ -389,7 +398,7 @@ async def apply_mesh(
                 await db.commit()
                 await db.refresh(tunnel)
                 
-                # Apply FRP client to Foreign node
+                # Apply FRP client to node
                 try:
                     client_spec = {
                         "mode": "client",
@@ -402,7 +411,7 @@ async def apply_mesh(
                     }
                     
                     response = await node_client.send_to_node(
-                        node_id=foreign_node_id,
+                        node_id=node_id,
                         endpoint="/api/agent/tunnels/apply",
                         data={
                             "tunnel_id": tunnel.id,
@@ -417,9 +426,9 @@ async def apply_mesh(
                     tunnel.status = "active"
                     await db.commit()
                     
-                    logger.info(f"Created FRP {trans} client on Foreign node {foreign_node_id} connecting to Iran {iran_node_id}: {endpoint}")
+                    logger.info(f"Created FRP {trans} client on {node_role} node {node_id} connecting to Iran {iran_node_id}: {endpoint}")
                 except Exception as e:
-                    logger.error(f"Failed to create FRP client on Foreign node {foreign_node_id} to Iran {iran_node_id}: {e}", exc_info=True)
+                    logger.error(f"Failed to create FRP client on {node_role} node {node_id} to Iran {iran_node_id}: {e}", exc_info=True)
                     tunnel.status = "error"
                     tunnel.error_message = str(e)
                     await db.commit()
@@ -496,13 +505,11 @@ async def apply_mesh(
         # Get peer endpoints for WireGuard config
         peer_endpoints = frp_endpoints[node_id]
         
-        # Determine listen port for Foreign nodes
-        # Foreign nodes should listen on the port where FRP forwards (local_port = shared_wg_port)
-        listen_port = None
-        if node_role == "foreign":
-            # All Foreign nodes use the same shared_wg_port as local_port
-            listen_port = shared_wg_port
-            logger.info(f"Foreign node {node_id} WireGuard will listen on port {listen_port} (shared FRP local_port)")
+        # Determine listen port for all nodes
+        # All nodes (Iran and Foreign) should listen on the port where FRP forwards (local_port = shared_wg_port)
+        # This allows FRP to forward traffic to WireGuard on all nodes
+        listen_port = shared_wg_port
+        logger.info(f"Node {node_id} (role: {node_role}) WireGuard will listen on port {listen_port} (shared FRP local_port)")
         
         # Generate WireGuard config
         wg_config = wireguard_mesh_manager.generate_wireguard_config(
