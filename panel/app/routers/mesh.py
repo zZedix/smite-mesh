@@ -311,16 +311,17 @@ async def apply_mesh(
                 raise RuntimeError(f"Failed to apply FRP server: {response.get('message')}")
             
             # Apply client to Foreign node
+            # IMPORTANT: Use Iran node IP, NOT panel IP
+            # Don't use prepare_frp_spec_for_node - it overwrites server_addr with panel IP
             client_spec = {
-                "server_addr": iran_node_ip,
-                "server_port": bind_port,
+                "mode": "client",
+                "server_addr": iran_node_ip,  # Iran node IP (where FRP server is running)
+                "server_port": bind_port,  # Must match Iran's bind_port
                 "type": trans,
                 "local_ip": "127.0.0.1",
                 "local_port": wg_port,
                 "remote_port": wg_port,
             }
-            client_spec_prepared = prepare_frp_spec_for_node(client_spec, foreign_node, request)
-            client_spec_prepared["mode"] = "client"
             
             response = await node_client.send_to_node(
                 node_id=foreign_node_id,
