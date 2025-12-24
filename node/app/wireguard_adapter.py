@@ -191,6 +191,9 @@ class WireGuardAdapter:
                                         
             except Exception as e:
                 logger.warning(f"Error during IP cleanup: {e}")
+            
+            # Wait a bit after cleanup to ensure IP is fully released
+            time.sleep(0.3)
         
         # Write config file
         config_path.write_text(wg_config, encoding="utf-8")
