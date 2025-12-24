@@ -1,10 +1,10 @@
 services:
-  smite-panel:
-    image: ghcr.io/zzedix/smite-panel:${SMITE_VERSION:-latest}
+  sm-panel:
+    image: ghcr.io/zzedix/sm-panel:${SMITE_VERSION:-latest}
     build:
       context: .
       dockerfile: panel/Dockerfile
-    container_name: smite-panel
+    container_name: sm-panel
     network_mode: host
     volumes:
       - ./panel/data:/app/data
@@ -46,7 +46,7 @@ services:
       - SMITE_SSL_DOMAIN=${SMITE_SSL_DOMAIN:-REPLACE_DOMAIN}
       - PANEL_PORT=${PANEL_PORT:-8000}
     depends_on:
-      - smite-panel
+      - sm-panel
     restart: unless-stopped
     profiles:
       - https
@@ -59,7 +59,7 @@ services:
     ports:
       - "3000:80"
     depends_on:
-      - smite-panel
+      - sm-panel
     restart: unless-stopped
     networks:
       - smite-network

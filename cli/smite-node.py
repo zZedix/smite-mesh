@@ -13,7 +13,7 @@ from pathlib import Path
 def get_compose_file():
     """Get docker-compose file path"""
     possible_roots = [
-        Path("/opt/smite-node"),
+        Path("/opt/sm-node"),
         Path("/usr/local/node"),  # Legacy installation path
         Path.cwd(),
         Path(__file__).parent.parent / "node",
@@ -24,13 +24,13 @@ def get_compose_file():
         if compose_file.exists():
             return compose_file
     
-    return Path("/opt/smite-node") / "docker-compose.yml"
+    return Path("/opt/sm-node") / "docker-compose.yml"
 
 
 def get_env_file():
     """Get .env file path"""
     possible_roots = [
-        Path("/opt/smite-node"),
+        Path("/opt/sm-node"),
         Path("/usr/local/node"),  # Legacy installation path
         Path.cwd(),
         Path(__file__).parent.parent / "node",
@@ -41,7 +41,7 @@ def get_env_file():
         if env_file.exists():
             return env_file
     
-    return Path("/opt/smite-node") / ".env"
+    return Path("/opt/sm-node") / ".env"
 
 
 def run_docker_compose(args, capture_output=False):
@@ -50,7 +50,7 @@ def run_docker_compose(args, capture_output=False):
     if not compose_file.exists():
         print(f"Error: docker-compose.yml not found at {compose_file}")
         print(f"\nPlease ensure you're in the node directory or docker-compose.yml exists at:")
-        print(f"  - /opt/smite-node/docker-compose.yml")
+        print(f"  - /opt/sm-node/docker-compose.yml")
         print(f"  - /usr/local/node/docker-compose.yml")
         print(f"  - {Path.cwd()}/docker-compose.yml")
         sys.exit(1)
@@ -75,7 +75,7 @@ def cmd_status(args):
     print("Node Status:")
     print("-" * 50)
     
-    result = subprocess.run(["docker", "ps", "--filter", "name=smite-node", "--format", "{{.Status}}"], 
+    result = subprocess.run(["docker", "ps", "--filter", "name=sm-node", "--format", "{{.Status}}"], 
                           capture_output=True, text=True)
     if result.stdout.strip():
         print(f"Docker: {result.stdout.strip()}")
@@ -118,11 +118,11 @@ def cmd_update(args):
 def cmd_restart(args):
     """Restart node (recreate container to pick up .env changes, no pull)"""
     print("Restarting node...")
-    run_docker_compose(["stop", "smite-node"])
-    run_docker_compose(["rm", "-f", "smite-node"])
-    result = run_docker_compose(["up", "-d", "--no-deps", "--no-pull", "smite-node"], capture_output=True)
+    run_docker_compose(["stop", "sm-node"])
+    run_docker_compose(["rm", "-f", "sm-node"])
+    result = run_docker_compose(["up", "-d", "--no-deps", "--no-pull", "sm-node"], capture_output=True)
     if result.returncode != 0 and "--no-pull" in result.stderr:
-        run_docker_compose(["up", "-d", "--no-deps", "smite-node"])
+        run_docker_compose(["up", "-d", "--no-deps", "sm-node"])
     else:
         if result.returncode != 0:
             print(result.stderr)
@@ -152,7 +152,7 @@ def cmd_edit_env(args):
 def cmd_logs(args):
     """Stream logs"""
     follow = ["--follow"] if args.follow else []
-    run_docker_compose(["logs"] + follow + ["smite-node"])
+    run_docker_compose(["logs"] + follow + ["sm-node"])
 
 
 def cmd_uninstall(args):
@@ -161,11 +161,11 @@ def cmd_uninstall(args):
     print("⚠️  WARNING: This will completely remove Smite Node!")
     print("=" * 60)
     print("\nThis will remove:")
-    print("  - All Docker containers (smite-node)")
+    print("  - All Docker containers (sm-node)")
     print("  - All Docker volumes")
-    print("  - Installation directory (/opt/smite-node)")
-    print("  - CLI script (/usr/local/bin/smite-node)")
-    print("  - Docker images (ghcr.io/zzedix/smite-node)")
+    print("  - Installation directory (/opt/sm-node)")
+    print("  - CLI script (/usr/local/bin/sm-node)")
+    print("  - Docker images (ghcr.io/zzedix/sm-node)")
     print("\n⚠️  ALL DATA WILL BE LOST!")
     print("=" * 60)
     
@@ -190,8 +190,8 @@ def cmd_uninstall(args):
             finally:
                 os.chdir(original_cwd)
         
-        subprocess.run(["docker", "stop", "smite-node"], capture_output=True, check=False)
-        subprocess.run(["docker", "rm", "-f", "smite-node"], capture_output=True, check=False)
+        subprocess.run(["docker", "stop", "sm-node"], capture_output=True, check=False)
+        subprocess.run(["docker", "rm", "-f", "sm-node"], capture_output=True, check=False)
         print("  ✓ Containers removed")
     except Exception as e:
         print(f"  ⚠️  Warning: {e}")
@@ -199,7 +199,7 @@ def cmd_uninstall(args):
     # Remove volumes
     print("\n[2/5] Removing Docker volumes...")
     try:
-        result = subprocess.run(["docker", "volume", "ls", "-q", "--filter", "name=smite-node"], 
+        result = subprocess.run(["docker", "volume", "ls", "-q", "--filter", "name=sm-node"], 
                               capture_output=True, text=True)
         volumes = result.stdout.strip().split('\n')
         for volume in volumes:
@@ -212,9 +212,9 @@ def cmd_uninstall(args):
     # Remove images
     print("\n[3/5] Removing Docker images...")
     try:
-        subprocess.run(["docker", "rmi", "-f", "ghcr.io/zzedix/smite-node"], capture_output=True, check=False)
-        subprocess.run(["docker", "rmi", "-f", "ghcr.io/zzedix/smite-node:latest"], capture_output=True, check=False)
-        result = subprocess.run(["docker", "images", "--format", "{{.Repository}}:{{.Tag}}", "ghcr.io/zzedix/smite-node"], 
+        subprocess.run(["docker", "rmi", "-f", "ghcr.io/zzedix/sm-node"], capture_output=True, check=False)
+        subprocess.run(["docker", "rmi", "-f", "ghcr.io/zzedix/sm-node:latest"], capture_output=True, check=False)
+        result = subprocess.run(["docker", "images", "--format", "{{.Repository}}:{{.Tag}}", "ghcr.io/zzedix/sm-node"], 
                               capture_output=True, text=True)
         for tag in result.stdout.strip().split('\n'):
             if tag:
@@ -225,7 +225,7 @@ def cmd_uninstall(args):
     
     # Remove installation directory
     print("\n[4/5] Removing installation directory...")
-    install_dirs = [Path("/opt/smite-node"), Path("/usr/local/node")]
+    install_dirs = [Path("/opt/sm-node"), Path("/usr/local/node")]
     for install_dir in install_dirs:
         if install_dir.exists():
             try:
@@ -238,11 +238,11 @@ def cmd_uninstall(args):
     
     # Remove CLI script
     print("\n[5/5] Removing CLI script...")
-    cli_path = Path("/usr/local/bin/smite-node")
+    cli_path = Path("/usr/local/bin/sm-node")
     if cli_path.exists():
         try:
             cli_path.unlink()
-            print("  ✓ Removed /usr/local/bin/smite-node")
+            print("  ✓ Removed /usr/local/bin/sm-node")
         except Exception as e:
             print(f"  ⚠️  Warning: Could not remove CLI script: {e}")
     else:

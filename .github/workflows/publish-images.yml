@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - main
+      - dev
       - next
       - beta
       - tst
@@ -16,7 +17,7 @@ on:
 
 env:
   REGISTRY: ghcr.io
-  IMAGE_PREFIX: ${{ github.repository_owner }}/smite
+  IMAGE_PREFIX: ${{ github.repository_owner }}/sm
 
 jobs:
   build-and-push:
@@ -46,7 +47,7 @@ jobs:
       - name: Set lowercase image prefix
         id: image-prefix
         run: |
-          echo "prefix=$(echo '${{ github.repository_owner }}' | tr '[:upper:]' '[:lower:]')/smite" >> $GITHUB_OUTPUT
+          echo "prefix=$(echo '${{ github.repository_owner }}' | tr '[:upper:]' '[:lower:]')/sm" >> $GITHUB_OUTPUT
 
       - name: Detect relevant changes
         id: changes
@@ -119,13 +120,15 @@ jobs:
           images: ${{ env.REGISTRY }}/${{ steps.image-prefix.outputs.prefix }}-panel
           tags: |
             type=raw,value=tst,enable=${{ github.ref == 'refs/heads/tst' }}
-            type=ref,event=branch,enable=${{ github.ref != 'refs/heads/main' && github.ref != 'refs/heads/tst' }}
+            type=raw,value=dev,enable=${{ github.ref == 'refs/heads/dev' }}
+            type=raw,value=main,enable=${{ github.ref == 'refs/heads/main' }}
+            type=ref,event=branch,enable=${{ github.ref != 'refs/heads/main' && github.ref != 'refs/heads/dev' && github.ref != 'refs/heads/tst' }}
             type=ref,event=pr
             type=semver,pattern={{version}},enable=${{ github.ref_type == 'tag' && steps.has-version.outputs.has_version == 'true' }}
             type=semver,pattern={{major}}.{{minor}},enable=${{ github.ref_type == 'tag' && steps.has-version.outputs.has_version == 'true' }}
-            type=raw,value=${{ steps.version.outputs.version }},enable=${{ steps.has-version.outputs.has_version == 'true' && steps.version.outputs.version != 'latest' && github.ref != 'refs/heads/tst' && (github.ref == 'refs/heads/main' || github.ref_type == 'tag') }}
-            type=sha,enable=${{ github.ref != 'refs/heads/main' && github.ref != 'refs/heads/tst' }}
-            type=raw,value=latest,enable=${{ steps.tag-latest.outputs.should_tag == 'true' && github.ref != 'refs/heads/tst' }}
+            type=raw,value=${{ steps.version.outputs.version }},enable=${{ steps.has-version.outputs.has_version == 'true' && steps.version.outputs.version != 'latest' && github.ref != 'refs/heads/tst' && github.ref != 'refs/heads/dev' && (github.ref == 'refs/heads/main' || github.ref_type == 'tag') }}
+            type=sha,enable=${{ github.ref != 'refs/heads/main' && github.ref != 'refs/heads/dev' && github.ref != 'refs/heads/tst' }}
+            type=raw,value=latest,enable=${{ steps.tag-latest.outputs.should_tag == 'true' && github.ref != 'refs/heads/tst' && github.ref != 'refs/heads/dev' }}
 
       - name: Build and push panel image
         uses: docker/build-push-action@v5
@@ -149,13 +152,15 @@ jobs:
           images: ${{ env.REGISTRY }}/${{ steps.image-prefix.outputs.prefix }}-node
           tags: |
             type=raw,value=tst,enable=${{ github.ref == 'refs/heads/tst' }}
-            type=ref,event=branch,enable=${{ github.ref != 'refs/heads/main' && github.ref != 'refs/heads/tst' }}
+            type=raw,value=dev,enable=${{ github.ref == 'refs/heads/dev' }}
+            type=raw,value=main,enable=${{ github.ref == 'refs/heads/main' }}
+            type=ref,event=branch,enable=${{ github.ref != 'refs/heads/main' && github.ref != 'refs/heads/dev' && github.ref != 'refs/heads/tst' }}
             type=ref,event=pr
             type=semver,pattern={{version}},enable=${{ github.ref_type == 'tag' && steps.has-version.outputs.has_version == 'true' }}
             type=semver,pattern={{major}}.{{minor}},enable=${{ github.ref_type == 'tag' && steps.has-version.outputs.has_version == 'true' }}
-            type=raw,value=${{ steps.version.outputs.version }},enable=${{ steps.has-version.outputs.has_version == 'true' && steps.version.outputs.version != 'latest' && github.ref != 'refs/heads/tst' && (github.ref == 'refs/heads/main' || github.ref_type == 'tag') }}
-            type=sha,enable=${{ github.ref != 'refs/heads/main' && github.ref != 'refs/heads/tst' }}
-            type=raw,value=latest,enable=${{ steps.tag-latest.outputs.should_tag == 'true' && github.ref != 'refs/heads/tst' }}
+            type=raw,value=${{ steps.version.outputs.version }},enable=${{ steps.has-version.outputs.has_version == 'true' && steps.version.outputs.version != 'latest' && github.ref != 'refs/heads/tst' && github.ref != 'refs/heads/dev' && (github.ref == 'refs/heads/main' || github.ref_type == 'tag') }}
+            type=sha,enable=${{ github.ref != 'refs/heads/main' && github.ref != 'refs/heads/dev' && github.ref != 'refs/heads/tst' }}
+            type=raw,value=latest,enable=${{ steps.tag-latest.outputs.should_tag == 'true' && github.ref != 'refs/heads/tst' && github.ref != 'refs/heads/dev' }}
 
       - name: Build and push node image
         uses: docker/build-push-action@v5

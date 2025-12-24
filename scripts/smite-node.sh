@@ -130,7 +130,7 @@ fi
 if [ ! -f "Dockerfile" ]; then
     echo "Cloning node files from GitHub..."
     TEMP_DIR=$(mktemp -d)
-    git clone --depth 1 $GIT_BRANCH https://github.com/zZedix/Smite.git "$TEMP_DIR" || {
+    git clone --depth 1 $GIT_BRANCH https://github.com/zZedix/smite-mesh.git "$TEMP_DIR" || {
         echo "Error: Failed to clone repository"
         exit 1
     }
@@ -142,7 +142,7 @@ else
     # Update docker-compose.yml and Dockerfile if they exist
     echo "Updating node files from GitHub..."
     TEMP_DIR=$(mktemp -d)
-    git clone --depth 1 $GIT_BRANCH https://github.com/zZedix/Smite.git "$TEMP_DIR" || {
+    git clone --depth 1 $GIT_BRANCH https://github.com/zZedix/smite-mesh.git "$TEMP_DIR" || {
         echo "Warning: Failed to clone repository for updates"
         rm -rf "$TEMP_DIR"
     } || true
@@ -167,7 +167,7 @@ else
     if [ "${SMITE_VERSION:-latest}" = "next" ]; then
         CLI_BRANCH="next"
     fi
-    sudo curl -L https://raw.githubusercontent.com/zZedix/Smite/${CLI_BRANCH}/cli/smite-node.py -o /usr/local/bin/smite-node
+    sudo curl -L https://raw.githubusercontent.com/zZedix/smite-mesh/${CLI_BRANCH}/cli/smite-node.py -o /usr/local/bin/smite-node
     sudo chmod +x /usr/local/bin/smite-node
 fi
 
@@ -251,7 +251,7 @@ if [ -z "${SMITE_VERSION}" ]; then
     export SMITE_VERSION=latest
 fi
 
-if docker pull ghcr.io/zzedix/smite-node:${SMITE_VERSION} 2>/dev/null; then
+if docker pull ghcr.io/zzedix/sm-node:${SMITE_VERSION} 2>/dev/null; then
     echo "✅ Node image pulled from GHCR"
 else
     echo "⚠️  Prebuilt image not found, will build locally..."
@@ -268,7 +268,7 @@ echo "Waiting for services to start..."
 sleep 5
 
 # Check status
-if docker ps | grep -q smite-node; then
+if docker ps | grep -q sm-node; then
     echo ""
     echo "✅ Smite Node installed successfully!"
     echo ""

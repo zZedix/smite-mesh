@@ -180,7 +180,7 @@ const Mesh = () => {
             WireGuard Mesh
           </h1>
           <p className="text-gray-500 dark:text-gray-400 mt-1">
-            Site-to-site VPN mesh networks over Smite Backhaul
+            Site-to-site VPN mesh networks over FRP
           </p>
         </div>
         <button
@@ -390,6 +390,7 @@ const CreateMeshModal = ({ nodes, onClose, onSuccess }: CreateMeshModalProps) =>
   const [topology, setTopology] = useState<'full-mesh' | 'hub-spoke'>('full-mesh')
   const [transport, setTransport] = useState<'tcp' | 'udp' | 'both'>('both')
   const [mtu, setMtu] = useState('1280')
+  const [wireguardPort, setWireguardPort] = useState('')
   const [loading, setLoading] = useState(false)
   const [poolStatus, setPoolStatus] = useState<any>(null)
 
@@ -437,7 +438,8 @@ const CreateMeshModal = ({ nodes, onClose, onSuccess }: CreateMeshModalProps) =>
         overlay_subnet: overlaySubnet || undefined,
         topology,
         transport,
-        mtu: parseInt(mtu) || 1280
+        mtu: parseInt(mtu) || 1280,
+        wireguard_port: wireguardPort ? parseInt(wireguardPort) : undefined
       })
       onSuccess()
     } catch (error: any) {
@@ -572,7 +574,7 @@ const CreateMeshModal = ({ nodes, onClose, onSuccess }: CreateMeshModalProps) =>
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                  Backhaul Transport
+                  FRP Transport
                 </label>
                 <select
                   value={transport}
@@ -586,9 +588,27 @@ const CreateMeshModal = ({ nodes, onClose, onSuccess }: CreateMeshModalProps) =>
                 <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
                   {transport === 'both' 
                     ? 'Creates both TCP and UDP tunnels for redundancy and better connectivity'
-                    : 'Transport protocol for Backhaul tunnels'}
+                    : 'Transport protocol for FRP tunnels'}
                 </p>
               </div>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                WireGuard Port (Optional)
+              </label>
+              <input
+                type="number"
+                value={wireguardPort}
+                onChange={(e) => setWireguardPort(e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg dark:bg-gray-700 dark:text-white"
+                placeholder="Auto (random 17000-17999)"
+                min="1"
+                max="65535"
+              />
+              <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                Custom port for WireGuard local_port and remote_port. Leave empty for random port. Both ports will use the same value.
+              </p>
             </div>
 
             <div className="flex justify-end gap-3 pt-4">
