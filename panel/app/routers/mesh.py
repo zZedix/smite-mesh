@@ -289,42 +289,22 @@ async def _ensure_backhaul_tunnel(
         return None
     
     if existing_tunnel:
-        # Check if existing tunnel has correct port separation
-        existing_control = existing_tunnel.spec.get("control_port") or existing_tunnel.spec.get("listen_port")
-        existing_public = existing_tunnel.spec.get("public_port")
+        # Always delete and recreate Backhaul tunnels to ensure correct port configuration
+        # This prevents issues with old tunnels that may have incorrect endpoints
+        logger.info(f"Deleting existing Backhaul tunnel {existing_tunnel.id} for node {node_id} to ensure correct configuration")
+        try:
+            # Remove from node first
+            await node_client.send_to_node(
+                node_id=node_id,
+                endpoint="/api/agent/tunnels/remove",
+                data={"tunnel_id": existing_tunnel.id}
+            )
+        except Exception as e:
+            logger.warning(f"Error removing old tunnel from node {node_id}: {e}")
         
-        # If ports are the same (old bug), delete and recreate
-        if existing_control and existing_public and existing_control == existing_public:
-            logger.warning(f"Existing tunnel {existing_tunnel.id} has conflicting ports, deleting and recreating")
-            await db.delete(existing_tunnel)
-            await db.commit()
-        elif existing_public:
-            # Existing tunnel found, but ensure it's applied to the node
-            logger.info(f"Found existing Backhaul tunnel {existing_tunnel.id} for node {node_id}, ensuring it's applied")
-            try:
-                response = await node_client.send_to_node(
-                    node_id=node_id,
-                    endpoint="/api/agent/tunnels/apply",
-                    data={
-                        "tunnel_id": existing_tunnel.id,
-                        "core": "backhaul",
-                        "type": transport,
-                        "spec": existing_tunnel.spec
-                    }
-                )
-                if response.get("status") == "error":
-                    logger.error(f"Failed to apply existing backhaul tunnel {existing_tunnel.id} to node {node_id}: {response.get('message')}")
-                else:
-                    logger.info(f"Successfully applied existing Backhaul tunnel {existing_tunnel.id} to node {node_id}")
-            except Exception as e:
-                logger.error(f"Error applying existing backhaul tunnel {existing_tunnel.id} to node {node_id}: {e}", exc_info=True)
-            # WireGuard should connect to control_port (where Backhaul listens), not public_port
-            return f"{node_ip}:{existing_control}" if existing_control else f"{node_ip}:{existing_public}"
-        elif existing_control:
-            # Old tunnel without public_port, delete and recreate
-            logger.warning(f"Existing tunnel {existing_tunnel.id} missing public_port, deleting and recreating")
-            await db.delete(existing_tunnel)
-            await db.commit()
+        await db.delete(existing_tunnel)
+        await db.commit()
+        logger.info(f"Deleted old Backhaul tunnel {existing_tunnel.id}, will create new one")
     
     port_hash = int(hashlib.md5(f"{mesh_id}-{node_id}-{transport}".encode()).hexdigest()[:8], 16)
     base_port = 3080 if transport == "udp" else 4080
