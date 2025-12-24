@@ -439,93 +439,9 @@ async def apply_mesh(
                     await db.commit()
                     continue
     
-    # Create FRP clients for Iran nodes connecting to other Iran servers (use shared_wg_port for Iran-to-Iran)
-    for iran_node_id, iran_node, _ in iran_nodes:
-        for other_iran_node_id, other_iran_node, _ in iran_nodes:
-            # Skip if connecting to itself
-            if iran_node_id == other_iran_node_id:
-                continue
-            
-            other_iran_node_ip = other_iran_node.node_metadata.get("ip_address")
-            if not other_iran_node_ip:
-                logger.warning(f"Iran node {other_iran_node_id} has no IP address, skipping")
-                continue
-            
-            if other_iran_node_id not in iran_node_endpoints:
-                continue
-            
-            for trans in transports_to_create:
-                if trans not in iran_node_endpoints[other_iran_node_id]:
-                    continue
-                
-                endpoint = iran_node_endpoints[other_iran_node_id][trans]
-                iran_ip, _ = endpoint.rsplit(":", 1)
-                
-                # Calculate bind_port the same way as server (unique per Iran node)
-                port_hash = int(hashlib.md5(f"{mesh_id}-{other_iran_node_id}-{trans}".encode()).hexdigest()[:8], 16)
-                bind_port = 7000 + (port_hash % 1000)
-                
-                # Iran nodes use shared_wg_port for both local_port and remote_port (Iran-to-Iran)
-                wg_port = shared_wg_port
-                
-                tunnel_name = f"wg-mesh-{mesh_id[:8]}-{iran_node_id[:8]}-to-{other_iran_node_id[:8]}-{trans}-client"
-                
-                # Create tunnel record
-                tunnel = Tunnel(
-                    name=tunnel_name,
-                    core="frp",
-                    type=trans,
-                    node_id=iran_node_id,
-                    spec={
-                        "mode": "client",
-                        "server_addr": iran_ip,
-                        "server_port": bind_port,
-                        "type": trans,
-                        "local_ip": "127.0.0.1",
-                        "local_port": wg_port,
-                        "remote_port": wg_port,
-                    },
-                    status="pending"
-                )
-                db.add(tunnel)
-                await db.commit()
-                await db.refresh(tunnel)
-                
-                # Apply FRP client to Iran node
-                try:
-                    client_spec = {
-                        "mode": "client",
-                        "server_addr": iran_ip,
-                        "server_port": bind_port,
-                        "type": trans,
-                        "local_ip": "127.0.0.1",
-                        "local_port": wg_port,
-                        "remote_port": wg_port,
-                    }
-                    
-                    response = await node_client.send_to_node(
-                        node_id=iran_node_id,
-                        endpoint="/api/agent/tunnels/apply",
-                        data={
-                            "tunnel_id": tunnel.id,
-                            "core": "frp",
-                            "type": trans,
-                            "spec": client_spec
-                        }
-                    )
-                    if response.get("status") == "error":
-                        raise RuntimeError(f"Failed to apply FRP client: {response.get('message')}")
-                    
-                    tunnel.status = "active"
-                    await db.commit()
-                    
-                    logger.info(f"Created FRP {trans} client on Iran node {iran_node_id} connecting to Iran {other_iran_node_id}: {endpoint}")
-                except Exception as e:
-                    logger.error(f"Failed to create FRP client on Iran node {iran_node_id} to Iran {other_iran_node_id}: {e}", exc_info=True)
-                    tunnel.status = "error"
-                    tunnel.error_message = str(e)
-                    await db.commit()
-                    continue
+    # Iran nodes do NOT need FRP clients - they can connect directly via WireGuard
+    # Since Iran nodes are not behind NAT, they can reach each other directly
+    logger.info(f"Skipping FRP client creation for Iran nodes - they connect directly via WireGuard")
     
     # Step 3: Map endpoints for WireGuard peer configuration
     # For each node, determine which endpoint to use for each peer:
