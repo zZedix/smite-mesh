@@ -213,74 +213,167 @@ async def apply_mesh(
     # Use first Iran node as the FRP server hub
     primary_iran_id, primary_iran_node, _ = iran_nodes[0]
     
-    # For WireGuard mesh with transport="both", create ONLY 2 tunnels total:
-    # - 1 TCP tunnel (Iran server + Foreign client)
-    # - 1 UDP tunnel (Iran server + Foreign client)
-    # Use TCP by default, or both if transport="both"
+    # Create ONLY 2 tunnels total (like manual tunnel creation):
+    # - 1 TCP tunnel (Iran server + Foreign client) - ONE tunnel record
+    # - 1 UDP tunnel (Iran server + Foreign client) - ONE tunnel record
     if transport == "both":
         transports_to_create = ["tcp", "udp"]  # Only 2 tunnels total
     else:
         transports_to_create = [transport]  # 1 tunnel
     
-    # Create FRP servers on primary Iran node (1 per transport)
+    # Get first Foreign node (like manual tunnel creation)
+    if not foreign_nodes:
+        raise HTTPException(
+            status_code=400,
+            detail="At least one Foreign node is required for mesh"
+        )
+    foreign_node_id, foreign_node, _ = foreign_nodes[0]
+    
+    # Clean up old mesh tunnels
+    old_tunnels = await db.execute(
+        select(Tunnel).where(
+            Tunnel.name.like(f"wg-mesh-{mesh_id[:8]}%")
+        )
+    )
+    for old_tunnel in old_tunnels.scalars().all():
+        logger.info(f"Deleting old tunnel {old_tunnel.id}")
+        try:
+            if old_tunnel.node_id:
+                await node_client.send_to_node(
+                    node_id=old_tunnel.node_id,
+                    endpoint="/api/agent/tunnels/remove",
+                    data={"tunnel_id": old_tunnel.id}
+                )
+        except Exception as e:
+            logger.warning(f"Error removing old tunnel: {e}")
+        await db.delete(old_tunnel)
+    await db.commit()
+    
+    # Create tunnels like manual creation - ONE tunnel record per transport with both server and client
     iran_frp_endpoints = {}
     for trans in transports_to_create:
-        logger.info(f"Creating FRP {trans} server on Iran node {primary_iran_id} in mesh {mesh_id}")
-        frp_endpoint = await _ensure_frp_server(
-            mesh_id, primary_iran_id, primary_iran_node, db, request, node_client, trans
-        )
+        logger.info(f"Creating FRP {trans} tunnel (Iran server + Foreign client) for mesh {mesh_id}")
         
-        if not frp_endpoint:
-            logger.warning(f"Failed to create FRP {trans} server on Iran node {primary_iran_id}")
+        # Generate ports
+        import hashlib
+        port_hash = int(hashlib.md5(f"{mesh_id}-{primary_iran_id}-{trans}".encode()).hexdigest()[:8], 16)
+        bind_port = 7000 + (port_hash % 1000)
+        wg_port = 17000 + (port_hash % 1000)
+        
+        iran_node_ip = primary_iran_node.node_metadata.get("ip_address")
+        if not iran_node_ip:
+            logger.warning(f"Iran node {primary_iran_id} has no IP address")
             continue
         
-        iran_frp_endpoints[trans] = frp_endpoint
-        logger.info(f"FRP {trans} server endpoint for Iran node {primary_iran_id}: {frp_endpoint}")
+        # Create ONE tunnel record (like manual tunnel creation)
+        # The tunnel creation logic will handle both server (Iran) and client (Foreign)
+        tunnel_name = f"wg-mesh-{mesh_id[:8]}-{trans}"
+        
+        # Use the same logic as manual tunnel creation
+        tunnel = Tunnel(
+            name=tunnel_name,
+            core="frp",
+            type=trans,
+            node_id=primary_iran_id,  # Iran node
+            spec={
+                "bind_port": bind_port,
+                "remote_port": wg_port,
+                "local_port": wg_port,
+                "local_ip": "127.0.0.1",
+            },
+            status="pending"
+        )
+        db.add(tunnel)
+        await db.commit()
+        await db.refresh(tunnel)
+        
+        # Use the tunnel creation logic to apply both server and client
+        try:
+            from app.routers.tunnels import create_tunnel
+            from app.schemas.tunnel import TunnelCreate
+            
+            # This will create both server on Iran and client on Foreign automatically
+            # Just like manual tunnel creation does
+            tunnel_create = TunnelCreate(
+                name=tunnel_name,
+                core="frp",
+                type=trans,
+                node_id=primary_iran_id,
+                iran_node_id=primary_iran_id,
+                foreign_node_id=foreign_node_id,
+                spec={
+                    "bind_port": bind_port,
+                    "remote_port": wg_port,
+                    "local_port": wg_port,
+                    "local_ip": "127.0.0.1",
+                }
+            )
+            
+            # The create_tunnel function will handle both server and client
+            # But we already created the tunnel, so we need to use the apply logic
+            # Let's use the existing tunnel apply endpoint logic instead
+            
+            # Get the tunnel creation logic from tunnels.py
+            # It will automatically create server on Iran and client on Foreign
+            from app.routers.tunnels import prepare_frp_spec_for_node
+            
+            # Prepare specs like manual creation does
+            server_spec = {"bind_port": bind_port}
+            client_spec = {
+                "server_addr": iran_node_ip,
+                "server_port": bind_port,
+                "type": trans,
+                "local_ip": "127.0.0.1",
+                "local_port": wg_port,
+                "remote_port": wg_port,
+            }
+            
+            # Apply server on Iran
+            server_spec_prepared = await prepare_frp_spec_for_node(server_spec, primary_iran_node, request)
+            response = await node_client.send_to_node(
+                node_id=primary_iran_id,
+                endpoint="/api/agent/tunnels/apply",
+                data={
+                    "tunnel_id": tunnel.id,
+                    "core": "frp",
+                    "type": trans,
+                    "spec": {"mode": "server", **server_spec_prepared}
+                }
+            )
+            
+            # Apply client on Foreign
+            client_spec_prepared = await prepare_frp_spec_for_node(client_spec, foreign_node, request)
+            response = await node_client.send_to_node(
+                node_id=foreign_node_id,
+                endpoint="/api/agent/tunnels/apply",
+                data={
+                    "tunnel_id": tunnel.id,
+                    "core": "frp",
+                    "type": trans,
+                    "spec": {"mode": "client", **client_spec_prepared}
+                }
+            )
+            
+            tunnel.status = "active"
+            await db.commit()
+            
+            frp_endpoint = f"{iran_node_ip}:{wg_port}"
+            iran_frp_endpoints[trans] = frp_endpoint
+            logger.info(f"Created FRP {trans} tunnel {tunnel.id}: endpoint={frp_endpoint}")
+        except Exception as e:
+            logger.error(f"Failed to apply FRP {trans} tunnel: {e}", exc_info=True)
+            tunnel.status = "error"
+            await db.commit()
+            continue
     
     if not iran_frp_endpoints:
         raise HTTPException(
             status_code=500,
-            detail="Failed to create FRP servers on Iran node"
+            detail="Failed to create FRP tunnels"
         )
     
-    # Create FRP clients on Foreign nodes (1 per transport, matching Iran servers)
-    for foreign_id, foreign_node, foreign_config in foreign_nodes:
-        # Clean up any old tunnels
-        old_tunnels = await db.execute(
-            select(Tunnel).where(
-                Tunnel.name.like(f"wg-mesh-{mesh_id[:8]}%"),
-                Tunnel.node_id == foreign_id
-            )
-        )
-        for old_tunnel in old_tunnels.scalars().all():
-            logger.info(f"Deleting old tunnel {old_tunnel.id} on Foreign node {foreign_id}")
-            try:
-                await node_client.send_to_node(
-                    node_id=foreign_id,
-                    endpoint="/api/agent/tunnels/remove",
-                    data={"tunnel_id": old_tunnel.id}
-                )
-            except Exception as e:
-                logger.warning(f"Error removing old tunnel from Foreign node: {e}")
-            await db.delete(old_tunnel)
-        await db.commit()
-        
-        foreign_endpoints = {}
-        for trans in transports_to_create:
-            iran_endpoint = iran_frp_endpoints.get(trans)
-            if iran_endpoint:
-                logger.info(f"Creating FRP {trans} client on Foreign node {foreign_id} connecting to Iran {primary_iran_id}")
-                await _ensure_frp_client(
-                    mesh_id, foreign_id, foreign_node, primary_iran_node, iran_endpoint, db, request, node_client, trans
-                )
-                foreign_endpoints[trans] = iran_endpoint
-        
-        # Foreign nodes use Iran's FRP endpoints for WireGuard
-        if foreign_endpoints:
-            frp_endpoints[foreign_id] = foreign_endpoints
-    
-    # All nodes (Iran and Foreign) use Iran's FRP endpoints for WireGuard
-    for node_id, _, _ in iran_nodes:
+    # All nodes use Iran's FRP endpoints for WireGuard
+    for node_id in mesh_configs.keys():
         frp_endpoints[node_id] = iran_frp_endpoints
     
     for node_id, node_config in mesh_configs.items():
