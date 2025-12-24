@@ -59,21 +59,56 @@ class WireGuardAdapter:
         if self._interface_exists(interface_name):
             logger.info(f"WireGuard interface {interface_name} already exists, bringing it down first")
             try:
+                # Try wg-quick down first
                 if config_path.exists():
-                    subprocess.run(
+                    result = subprocess.run(
                         [self.wg_quick_binary, "down", str(config_path)],
+                        check=False,
+                        capture_output=True,
+                        text=True,
+                        timeout=5
+                    )
+                    if result.returncode != 0:
+                        logger.warning(f"wg-quick down failed: {result.stderr}")
+                
+                # Also try direct ip link delete as fallback
+                result = subprocess.run(
+                    ["ip", "link", "delete", interface_name],
+                    check=False,
+                    capture_output=True,
+                    text=True,
+                    timeout=5
+                )
+                if result.returncode != 0 and "Cannot find device" not in result.stderr:
+                    logger.warning(f"ip link delete failed: {result.stderr}")
+                
+                # Wait a bit for interface to be fully removed
+                import time
+                time.sleep(0.5)
+                
+                # Verify interface is gone
+                if self._interface_exists(interface_name):
+                    logger.warning(f"Interface {interface_name} still exists after cleanup, forcing removal")
+                    # Force remove any remaining IP addresses
+                    subprocess.run(
+                        ["ip", "addr", "flush", "dev", interface_name],
                         check=False,
                         capture_output=True,
                         timeout=5
                     )
-                else:
-                    # Interface exists but no config file, try to remove it directly
+                    subprocess.run(
+                        ["ip", "link", "set", interface_name, "down"],
+                        check=False,
+                        capture_output=True,
+                        timeout=5
+                    )
                     subprocess.run(
                         ["ip", "link", "delete", interface_name],
                         check=False,
                         capture_output=True,
                         timeout=5
                     )
+                    time.sleep(0.5)
             except Exception as e:
                 logger.warning(f"Error bringing down existing interface: {e}")
         
@@ -81,6 +116,47 @@ class WireGuardAdapter:
         allowed_ips = self._extract_allowed_ips(wg_config)
         for ip in allowed_ips:
             self._remove_route(ip)
+        
+        # Also check if the overlay IP is already assigned to another interface
+        overlay_ip = None
+        for line in wg_config.splitlines():
+            if line.strip().startswith("Address = "):
+                addr_line = line.split("=", 1)[1].strip()
+                # Extract IP from "10.25.0.1/32"
+                overlay_ip = addr_line.split("/")[0] if "/" in addr_line else addr_line
+                break
+        
+        if overlay_ip:
+            # Check if this IP is already assigned to another interface
+            try:
+                result = subprocess.run(
+                    ["ip", "addr", "show"],
+                    capture_output=True,
+                    text=True,
+                    timeout=5
+                )
+                if overlay_ip in result.stdout:
+                    # Find which interface has this IP
+                    for line in result.stdout.splitlines():
+                        if overlay_ip in line and "inet" in line:
+                            # Extract interface name (e.g., "wg-xxxxx")
+                            parts = line.split()
+                            if len(parts) > 1:
+                                # Look for interface name in previous lines
+                                logger.warning(f"IP {overlay_ip} is already assigned, checking interfaces...")
+                                # Try to remove it from any existing interface
+                                for wg_iface in ["wg-" + mesh_id[:8]] + [f"wg-{mesh_id[:8]}-{i}" for i in range(10)]:
+                                    try:
+                                        subprocess.run(
+                                            ["ip", "addr", "del", f"{overlay_ip}/32", "dev", wg_iface],
+                                            check=False,
+                                            capture_output=True,
+                                            timeout=2
+                                        )
+                                    except:
+                                        pass
+            except Exception as e:
+                logger.debug(f"Could not check for existing IP assignment: {e}")
         
         # Write config file
         config_path.write_text(wg_config, encoding="utf-8")
