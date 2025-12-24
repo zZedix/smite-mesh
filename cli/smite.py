@@ -700,21 +700,43 @@ def cmd_update(args):
     """Update panel (pull images and recreate)"""
     print("Updating panel...")
     
-    # Ensure SMITE_VERSION is set to 'main' if not set in .env
+    # Ensure SMITE_VERSION is set to 'main' in .env
     env_file = get_env_file()
+    env_updated = False
     if env_file.exists():
         env_content = env_file.read_text()
-        if "SMITE_VERSION=" not in env_content:
-            env_content += "\nSMITE_VERSION=main\n"
-            env_file.write_text(env_content)
+        lines = env_content.split('\n')
+        updated_lines = []
+        smite_version_set = False
+        for line in lines:
+            if line.strip().startswith("SMITE_VERSION="):
+                # Update to main if it's set to something else
+                if "SMITE_VERSION=main" not in line:
+                    updated_lines.append("SMITE_VERSION=main")
+                    env_updated = True
+                else:
+                    updated_lines.append(line)
+                smite_version_set = True
+            else:
+                updated_lines.append(line)
+        if not smite_version_set:
+            updated_lines.append("SMITE_VERSION=main")
+            env_updated = True
+        if env_updated:
+            env_file.write_text('\n'.join(updated_lines))
             print("Setting SMITE_VERSION=main in .env file")
     else:
         env_file.parent.mkdir(parents=True, exist_ok=True)
         env_file.write_text("SMITE_VERSION=main\n")
+        env_updated = True
         print("Created .env file with SMITE_VERSION=main")
     
-    run_docker_compose(["pull"])
-    run_docker_compose(["up", "-d", "--force-recreate"])
+    # Ensure environment variable is set for docker compose
+    env_vars = os.environ.copy()
+    env_vars["SMITE_VERSION"] = "main"
+    
+    run_docker_compose(["pull"], env_vars=env_vars)
+    run_docker_compose(["up", "-d", "--force-recreate"], env_vars=env_vars)
     print("Panel updated.")
 
 
