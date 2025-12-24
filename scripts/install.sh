@@ -295,9 +295,10 @@ echo ""
 echo "Pulling Docker images from GitHub Container Registry..."
 echo "  Using Docker BuildKit for faster builds..."
 
-# Set version (default to latest, can be overridden with SMITE_VERSION env var)
+# Set version (default to main, can be overridden with SMITE_VERSION env var)
+# The workflow publishes images with 'main' tag when pushing to main branch
 if [ -z "${SMITE_VERSION}" ]; then
-    export SMITE_VERSION=latest
+    export SMITE_VERSION=main
 fi
 
 # Try to pull prebuilt images first (will fallback to build if not available)
