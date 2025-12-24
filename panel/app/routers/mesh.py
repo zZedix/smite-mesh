@@ -213,11 +213,16 @@ async def apply_mesh(
     # Use first Iran node as the FRP server hub
     primary_iran_id, primary_iran_node, _ = iran_nodes[0]
     
-    # For WireGuard mesh, use TCP (or both TCP and UDP if transport="both")
-    # TCP is more reliable for tunneling through firewalls
-    transports_to_create = ["tcp", "udp"] if transport == "both" else [transport]
+    # For WireGuard mesh with transport="both", create ONLY 2 tunnels total:
+    # - 1 TCP tunnel (Iran server + Foreign client)
+    # - 1 UDP tunnel (Iran server + Foreign client)
+    # Use TCP by default, or both if transport="both"
+    if transport == "both":
+        transports_to_create = ["tcp", "udp"]  # Only 2 tunnels total
+    else:
+        transports_to_create = [transport]  # 1 tunnel
     
-    # Create FRP servers on primary Iran node
+    # Create FRP servers on primary Iran node (1 per transport)
     iran_frp_endpoints = {}
     for trans in transports_to_create:
         logger.info(f"Creating FRP {trans} server on Iran node {primary_iran_id} in mesh {mesh_id}")
@@ -238,7 +243,7 @@ async def apply_mesh(
             detail="Failed to create FRP servers on Iran node"
         )
     
-    # Create FRP clients on Foreign nodes connecting to Iran
+    # Create FRP clients on Foreign nodes (1 per transport, matching Iran servers)
     for foreign_id, foreign_node, foreign_config in foreign_nodes:
         # Clean up any old tunnels
         old_tunnels = await db.execute(
