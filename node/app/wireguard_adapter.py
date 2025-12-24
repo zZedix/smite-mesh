@@ -128,16 +128,9 @@ class WireGuardAdapter:
         if overlay_ip:
             # Aggressively remove IP from any interface that might have it
             try:
-                # First, try to remove from the target interface
                 logger.info(f"Checking for existing IP assignment: {overlay_ip}")
-                subprocess.run(
-                    ["ip", "addr", "del", f"{overlay_ip}/32", "dev", interface_name],
-                    check=False,
-                    capture_output=True,
-                    timeout=2
-                )
                 
-                # Get list of all interfaces
+                # Get list of all interfaces with their IPs
                 result = subprocess.run(
                     ["ip", "-o", "addr", "show"],
                     capture_output=True,
@@ -145,54 +138,76 @@ class WireGuardAdapter:
                     timeout=5
                 )
                 
+                # Find all interfaces that have this IP
+                interfaces_with_ip = []
                 if overlay_ip in result.stdout:
-                    # Parse -o format: "2: wg-xxx    inet 10.250.0.1/32 ..."
                     for line in result.stdout.splitlines():
                         if overlay_ip in line and "inet" in line:
                             parts = line.split()
                             if len(parts) >= 2:
                                 # Extract interface name (second field)
                                 iface_with_ip = parts[1].strip()
-                                if iface_with_ip != interface_name:
-                                    logger.warning(f"IP {overlay_ip} found on interface {iface_with_ip}, removing it")
-                                    # Try different CIDR formats
-                                    for cidr_format in [f"{overlay_ip}/32", overlay_ip, f"{overlay_ip}/128"]:
-                                        subprocess.run(
-                                            ["ip", "addr", "del", cidr_format, "dev", iface_with_ip],
-                                            check=False,
-                                            capture_output=True,
-                                            timeout=2
-                                        )
+                                interfaces_with_ip.append(iface_with_ip)
+                                logger.warning(f"IP {overlay_ip} found on interface {iface_with_ip}, will remove")
                 
-                # Also check using grep for any WireGuard interfaces
-                wg_result = subprocess.run(
-                    ["ip", "link", "show", "type", "wireguard"],
+                # Also check the target interface name specifically
+                if interface_name not in interfaces_with_ip:
+                    interfaces_with_ip.append(interface_name)
+                
+                # Remove IP from all found interfaces
+                for iface in interfaces_with_ip:
+                    # Try different CIDR formats and removal methods
+                    for cidr_format in [f"{overlay_ip}/32", f"{overlay_ip}/128", overlay_ip]:
+                        result = subprocess.run(
+                            ["ip", "addr", "del", cidr_format, "dev", iface],
+                            check=False,
+                            capture_output=True,
+                            text=True,
+                            timeout=2
+                        )
+                        if result.returncode == 0:
+                            logger.info(f"Successfully removed IP {overlay_ip} from interface {iface}")
+                            break
+                        elif "Cannot find device" not in result.stderr:
+                            logger.debug(f"Failed to remove {cidr_format} from {iface}: {result.stderr.strip()}")
+                
+                # Verify IP is actually removed by checking again
+                verify_result = subprocess.run(
+                    ["ip", "-o", "addr", "show"],
                     capture_output=True,
                     text=True,
                     timeout=5
                 )
-                if wg_result.returncode == 0:
-                    # Extract interface names from output
-                    for line in wg_result.stdout.splitlines():
-                        if ":" in line:
-                            parts = line.split(":", 2)
+                
+                if overlay_ip in verify_result.stdout:
+                    logger.warning(f"IP {overlay_ip} still exists after cleanup, attempting force removal from all interfaces")
+                    # Force remove from any remaining interface
+                    for line in verify_result.stdout.splitlines():
+                        if overlay_ip in line and "inet" in line:
+                            parts = line.split()
                             if len(parts) >= 2:
-                                wg_iface = parts[1].strip().split("@")[0]  # Remove @eth0 suffix if present
-                                if wg_iface and wg_iface != interface_name:
-                                    logger.info(f"Attempting to remove IP {overlay_ip} from WireGuard interface {wg_iface}")
-                                    for cidr_format in [f"{overlay_ip}/32", overlay_ip]:
-                                        subprocess.run(
-                                            ["ip", "addr", "del", cidr_format, "dev", wg_iface],
-                                            check=False,
-                                            capture_output=True,
-                                            timeout=2
-                                        )
+                                remaining_iface = parts[1].strip()
+                                # Try ip addr flush as last resort
+                                subprocess.run(
+                                    ["ip", "addr", "flush", "dev", remaining_iface],
+                                    check=False,
+                                    capture_output=True,
+                                    timeout=2
+                                )
+                                # Try removal again
+                                for cidr_format in [f"{overlay_ip}/32", overlay_ip]:
+                                    subprocess.run(
+                                        ["ip", "addr", "del", cidr_format, "dev", remaining_iface],
+                                        check=False,
+                                        capture_output=True,
+                                        timeout=2
+                                    )
                                         
             except Exception as e:
                 logger.warning(f"Error during IP cleanup: {e}")
             
             # Wait a bit after cleanup to ensure IP is fully released
-            time.sleep(0.3)
+            time.sleep(0.5)
         
         # Write config file
         config_path.write_text(wg_config, encoding="utf-8")
