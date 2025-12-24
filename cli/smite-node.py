@@ -13,7 +13,8 @@ from pathlib import Path
 def get_compose_file():
     """Get docker-compose file path"""
     possible_roots = [
-        Path("/opt/sm-node"),
+        Path("/opt/smite-node"),  # Current installation path
+        Path("/opt/sm-node"),  # Legacy path
         Path("/usr/local/node"),  # Legacy installation path
         Path.cwd(),
         Path(__file__).parent.parent / "node",
@@ -24,13 +25,14 @@ def get_compose_file():
         if compose_file.exists():
             return compose_file
     
-    return Path("/opt/sm-node") / "docker-compose.yml"
+    return Path("/opt/smite-node") / "docker-compose.yml"
 
 
 def get_env_file():
     """Get .env file path"""
     possible_roots = [
-        Path("/opt/sm-node"),
+        Path("/opt/smite-node"),  # Current installation path
+        Path("/opt/sm-node"),  # Legacy path
         Path("/usr/local/node"),  # Legacy installation path
         Path.cwd(),
         Path(__file__).parent.parent / "node",
@@ -41,7 +43,7 @@ def get_env_file():
         if env_file.exists():
             return env_file
     
-    return Path("/opt/sm-node") / ".env"
+    return Path("/opt/smite-node") / ".env"
 
 
 def run_docker_compose(args, capture_output=False):
@@ -50,6 +52,7 @@ def run_docker_compose(args, capture_output=False):
     if not compose_file.exists():
         print(f"Error: docker-compose.yml not found at {compose_file}")
         print(f"\nPlease ensure you're in the node directory or docker-compose.yml exists at:")
+        print(f"  - /opt/smite-node/docker-compose.yml")
         print(f"  - /opt/sm-node/docker-compose.yml")
         print(f"  - /usr/local/node/docker-compose.yml")
         print(f"  - {Path.cwd()}/docker-compose.yml")
@@ -163,7 +166,7 @@ def cmd_uninstall(args):
     print("\nThis will remove:")
     print("  - All Docker containers (sm-node)")
     print("  - All Docker volumes")
-    print("  - Installation directory (/opt/sm-node)")
+    print("  - Installation directory (/opt/smite-node)")
     print("  - CLI script (/usr/local/bin/sm-node)")
     print("  - Docker images (ghcr.io/zzedix/sm-node)")
     print("\n⚠️  ALL DATA WILL BE LOST!")
@@ -225,7 +228,7 @@ def cmd_uninstall(args):
     
     # Remove installation directory
     print("\n[4/5] Removing installation directory...")
-    install_dirs = [Path("/opt/sm-node"), Path("/usr/local/node")]
+    install_dirs = [Path("/opt/smite-node"), Path("/opt/sm-node"), Path("/usr/local/node")]
     for install_dir in install_dirs:
         if install_dir.exists():
             try:
