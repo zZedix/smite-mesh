@@ -287,38 +287,30 @@ async def apply_mesh(
         await db.commit()
         await db.refresh(tunnel)
         
-        # Use the tunnel creation logic to apply both server and client
+        # Apply tunnel using the same logic as manual tunnel creation
+        # Manual creation applies server to Iran and client to Foreign separately
         try:
-            from app.routers.tunnels import create_tunnel
-            from app.schemas.tunnel import TunnelCreate
-            
-            # This will create both server on Iran and client on Foreign automatically
-            # Just like manual tunnel creation does
-            tunnel_create = TunnelCreate(
-                name=tunnel_name,
-                core="frp",
-                type=trans,
-                node_id=primary_iran_id,
-                iran_node_id=primary_iran_id,
-                foreign_node_id=foreign_node_id,
-                spec={
-                    "bind_port": bind_port,
-                    "remote_port": wg_port,
-                    "local_port": wg_port,
-                    "local_ip": "127.0.0.1",
-                }
-            )
-            
-            # The create_tunnel function will handle both server and client
-            # But we already created the tunnel, so we need to use the apply logic
-            # Let's use the existing tunnel apply endpoint logic instead
-            
-            # Get the tunnel creation logic from tunnels.py
-            # It will automatically create server on Iran and client on Foreign
             from app.routers.tunnels import prepare_frp_spec_for_node
             
-            # Prepare specs like manual creation does
+            # Apply server to Iran node
             server_spec = {"bind_port": bind_port}
+            server_spec_prepared = prepare_frp_spec_for_node(server_spec, primary_iran_node, request)
+            server_spec_prepared["mode"] = "server"
+            
+            response = await node_client.send_to_node(
+                node_id=primary_iran_id,
+                endpoint="/api/agent/tunnels/apply",
+                data={
+                    "tunnel_id": tunnel.id,
+                    "core": "frp",
+                    "type": trans,
+                    "spec": server_spec_prepared
+                }
+            )
+            if response.get("status") == "error":
+                raise RuntimeError(f"Failed to apply FRP server: {response.get('message')}")
+            
+            # Apply client to Foreign node
             client_spec = {
                 "server_addr": iran_node_ip,
                 "server_port": bind_port,
@@ -327,22 +319,9 @@ async def apply_mesh(
                 "local_port": wg_port,
                 "remote_port": wg_port,
             }
+            client_spec_prepared = prepare_frp_spec_for_node(client_spec, foreign_node, request)
+            client_spec_prepared["mode"] = "client"
             
-            # Apply server on Iran
-            server_spec_prepared = await prepare_frp_spec_for_node(server_spec, primary_iran_node, request)
-            response = await node_client.send_to_node(
-                node_id=primary_iran_id,
-                endpoint="/api/agent/tunnels/apply",
-                data={
-                    "tunnel_id": tunnel.id,
-                    "core": "frp",
-                    "type": trans,
-                    "spec": {"mode": "server", **server_spec_prepared}
-                }
-            )
-            
-            # Apply client on Foreign
-            client_spec_prepared = await prepare_frp_spec_for_node(client_spec, foreign_node, request)
             response = await node_client.send_to_node(
                 node_id=foreign_node_id,
                 endpoint="/api/agent/tunnels/apply",
@@ -350,9 +329,11 @@ async def apply_mesh(
                     "tunnel_id": tunnel.id,
                     "core": "frp",
                     "type": trans,
-                    "spec": {"mode": "client", **client_spec_prepared}
+                    "spec": client_spec_prepared
                 }
             )
+            if response.get("status") == "error":
+                raise RuntimeError(f"Failed to apply FRP client: {response.get('message')}")
             
             tunnel.status = "active"
             await db.commit()
@@ -363,6 +344,7 @@ async def apply_mesh(
         except Exception as e:
             logger.error(f"Failed to apply FRP {trans} tunnel: {e}", exc_info=True)
             tunnel.status = "error"
+            tunnel.error_message = str(e)
             await db.commit()
             continue
     
