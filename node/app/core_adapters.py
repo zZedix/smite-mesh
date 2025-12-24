@@ -333,6 +333,18 @@ class BackhaulAdapter:
                 bind_ip = spec.get("bind_ip", "0.0.0.0")
                 bind_addr = f"{bind_ip}:{control_port}"
             
+            # Ensure bind_addr uses IPv4 explicitly for UDP transport to avoid IPv6 binding issues
+            # Backhaul may bind to IPv6 ([::]) when given 0.0.0.0, which breaks IPv4 WireGuard connections
+            if transport == "udp" and bind_addr:
+                if bind_addr.startswith("0.0.0.0:") or bind_addr.startswith("[::]:"):
+                    # Extract port and use explicit IPv4
+                    if ":" in bind_addr:
+                        port = bind_addr.split(":")[-1]
+                        bind_addr = f"0.0.0.0:{port}"
+                    elif bind_addr.startswith("[::]:"):
+                        port = bind_addr.split(":")[-1]
+                        bind_addr = f"0.0.0.0:{port}"
+            
             ports = spec.get("ports")
             if not ports:
                 listen_port = spec.get("public_port") or spec.get("listen_port")
@@ -430,6 +442,26 @@ class BackhaulAdapter:
                 log_fh.close()
                 logger.error(f"Failed to start Backhaul server: {e}", exc_info=True)
                 raise
+            
+            # For UDP servers, verify UDP is actually listening
+            if transport == "udp":
+                try:
+                    import time as time_module
+                    time_module.sleep(0.5)  # Give it a moment to bind
+                    bind_port = bind_addr.split(":")[-1] if ":" in bind_addr else None
+                    if bind_port:
+                        result = subprocess.run(
+                            ["ss", "-ulpn"],
+                            capture_output=True,
+                            text=True,
+                            timeout=2
+                        )
+                        if f":{bind_port} " not in result.stdout and f":{bind_port}\n" not in result.stdout:
+                            logger.warning(f"UDP Backhaul server on port {bind_port} may not be listening. Check logs: {log_path}")
+                        else:
+                            logger.info(f"UDP Backhaul server verified listening on port {bind_port}")
+                except Exception as e:
+                    logger.warning(f"Could not verify UDP listener for Backhaul server: {e}")
         else:
             remote_addr = spec.get("remote_addr") or spec.get("control_addr") or spec.get("bind_addr")
             if not remote_addr:
