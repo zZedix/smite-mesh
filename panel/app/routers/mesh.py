@@ -193,10 +193,13 @@ async def apply_mesh(
             continue
         
         node_role = node.node_metadata.get("role", "iran")
+        logger.info(f"Node {node_id} ({node.name}) has role: {node_role}")
         if node_role == "iran":
             iran_nodes.append((node_id, node, node_config))
+            logger.info(f"Added node {node_id} to Iran nodes list")
         else:
             foreign_nodes.append((node_id, node, node_config))
+            logger.info(f"Added node {node_id} to Foreign nodes list")
     
     if not iran_nodes:
         raise HTTPException(
@@ -242,7 +245,31 @@ async def apply_mesh(
         primary_iran_endpoints = list(iran_endpoints.values())[0]
     
     # Create Backhaul clients on Foreign nodes connecting to Iran
+    # First, delete any existing server tunnels on Foreign nodes (from old code)
     for foreign_id, foreign_node, foreign_config in foreign_nodes:
+        # Clean up any old server tunnels that might exist on Foreign nodes
+        old_tunnels = await db.execute(
+            select(Tunnel).where(
+                Tunnel.name.like(f"wg-mesh-{mesh_id[:8]}%"),
+                Tunnel.core == "backhaul",
+                Tunnel.node_id == foreign_id
+            )
+        )
+        for old_tunnel in old_tunnels.scalars().all():
+            # Check if it's a server tunnel (has mode=server in spec)
+            if old_tunnel.spec and old_tunnel.spec.get("mode") == "server":
+                logger.warning(f"Found old server tunnel {old_tunnel.id} on Foreign node {foreign_id}, deleting it")
+                try:
+                    await node_client.send_to_node(
+                        node_id=foreign_id,
+                        endpoint="/api/agent/tunnels/remove",
+                        data={"tunnel_id": old_tunnel.id}
+                    )
+                except Exception as e:
+                    logger.warning(f"Error removing old server tunnel from Foreign node: {e}")
+                await db.delete(old_tunnel)
+        await db.commit()
+        
         for trans in transports_to_create:
             logger.info(f"Creating Backhaul {trans} client on Foreign node {foreign_id} connecting to Iran {primary_iran_id}")
             iran_endpoint = primary_iran_endpoints.get(trans)
@@ -363,30 +390,17 @@ async def _ensure_backhaul_server(
     port_hash = int(hashlib.md5(f"{mesh_id}-{node_id}-{transport}".encode()).hexdigest()[:8], 16)
     base_port = 3080 if transport == "udp" else 4080
     control_port = base_port + (port_hash % 1000)
-    # Public port must be DIFFERENT from control port
-    # Target port should be the same as public port
-    # Use a different base to ensure they're always in different ranges
-    public_port = (base_port + 2000) + (port_hash % 1000)  # Different range from control_port
     
-    # Ensure public_port is definitely different from control_port
-    while public_port == control_port:
-        public_port = control_port + 1000 + (port_hash % 100)
-    
-    # Final safety check
-    assert public_port != control_port, f"Port conflict: control_port={control_port}, public_port={public_port}"
-    
+    # For WireGuard mesh, Backhaul server only needs to listen on control_port
+    # No port forwarding needed - WireGuard connects directly to control_port
     spec = {
         "mode": "server",
         "transport": transport,
         "bind_addr": f"0.0.0.0:{control_port}",
         "control_port": control_port,
-        "public_port": public_port,
-        "target_host": "127.0.0.1",
-        "target_port": public_port,  # Same as public port
-        "ports": [f"{public_port}=127.0.0.1:{public_port}"]
     }
     
-    logger.info(f"Creating Backhaul tunnel: control_port={control_port}, public_port={public_port}, target_port={public_port}")
+    logger.info(f"Creating Backhaul server on Iran node: control_port={control_port}, transport={transport}")
     
     tunnel = Tunnel(
         name=tunnel_name,
