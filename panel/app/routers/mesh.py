@@ -407,6 +407,7 @@ async def apply_mesh(
         }
         
         try:
+            logger.info(f"Applying WireGuard mesh to node {node_id} (Iran: {node_id == primary_iran_id}, listen_port: {listen_port})")
             response = await node_client.send_to_node(
                 node_id=node_id,
                 endpoint="/api/agent/mesh/apply",
@@ -416,9 +417,14 @@ async def apply_mesh(
                 }
             )
             if response.get("status") == "error":
-                logger.error(f"Failed to apply mesh to node {node_id}: {response.get('message')}")
+                error_msg = response.get("message", "Unknown error")
+                logger.error(f"Failed to apply mesh to node {node_id}: {error_msg}")
+                raise RuntimeError(f"Failed to apply WireGuard to node {node_id}: {error_msg}")
+            else:
+                logger.info(f"Successfully applied WireGuard mesh to node {node_id}")
         except Exception as e:
             logger.error(f"Error applying mesh to node {node_id}: {e}", exc_info=True)
+            raise
     
     mesh.status = "active"
     await db.commit()
