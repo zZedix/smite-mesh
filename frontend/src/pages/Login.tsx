@@ -1,12 +1,14 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { LogIn, Loader2, Shield } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 import { useAuth } from '../contexts/AuthContext'
 import api from '../api/client'
 import SmiteLogoDark from '../assets/SmiteD.png'
 import SmiteLogoLight from '../assets/SmiteL.png'
 
 const Login = () => {
+  const { t } = useTranslation()
   const [username, setUsername] = useState('')
   const [version, setVersion] = useState('v0.1.0')
   const [password, setPassword] = useState('')
@@ -60,7 +62,7 @@ const Login = () => {
       login(response.data.access_token, response.data.username)
       navigate('/dashboard')
     } catch (err: any) {
-      setError(err.response?.data?.detail || 'Login failed. Please check your credentials.')
+      setError(err.response?.data?.detail || t('login.loginFailed'))
     } finally {
       setLoading(false)
     }
@@ -82,9 +84,9 @@ const Login = () => {
             </div>
           </div>
           <h1 className="text-4xl sm:text-5xl font-bold bg-gradient-to-r from-blue-600 to-indigo-600 dark:from-blue-400 dark:to-indigo-400 bg-clip-text text-transparent mb-2">
-            Smite
+            {t('login.title')}
           </h1>
-          <p className="text-gray-600 dark:text-gray-400 text-lg">Tunnel Management Platform</p>
+          <p className="text-gray-600 dark:text-gray-400 text-lg">{t('login.subtitle')}</p>
         </div>
 
         {/* Login Card */}
@@ -95,7 +97,7 @@ const Login = () => {
                 <Shield className="w-5 h-5 text-blue-600 dark:text-blue-400" />
               </div>
               <h2 className="text-2xl font-bold text-gray-900 dark:text-white">
-                Sign In
+                {t('login.signIn')}
               </h2>
             </div>
             <button
@@ -122,7 +124,7 @@ const Login = () => {
                 htmlFor="username"
                 className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2"
               >
-                Username
+                {t('login.username')}
               </label>
               <input
                 id="username"
@@ -131,7 +133,7 @@ const Login = () => {
                 onChange={(e) => setUsername(e.target.value)}
                 required
                 className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
-                placeholder="Enter your username"
+                placeholder={t('login.enterUsername')}
                 autoComplete="username"
               />
             </div>
@@ -141,7 +143,7 @@ const Login = () => {
                 htmlFor="password"
                 className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2"
               >
-                Password
+                {t('login.password')}
               </label>
               <input
                 id="password"
@@ -150,7 +152,7 @@ const Login = () => {
                 onChange={(e) => setPassword(e.target.value)}
                 required
                 className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
-                placeholder="Enter your password"
+                placeholder={t('login.enterPassword')}
                 autoComplete="current-password"
               />
             </div>
@@ -163,12 +165,12 @@ const Login = () => {
               {loading ? (
                 <>
                   <Loader2 className="w-5 h-5 animate-spin" />
-                  <span>Signing in...</span>
+                  <span>{t('login.signingIn')}</span>
                 </>
               ) : (
                 <>
                   <LogIn className="w-5 h-5" />
-                  <span>Sign In</span>
+                  <span>{t('login.signInBtn')}</span>
                 </>
               )}
             </button>

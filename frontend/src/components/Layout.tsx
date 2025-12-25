@@ -1,6 +1,7 @@
 import { ReactNode, useState, useEffect } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { LayoutDashboard, Network, FileText, Activity, Moon, Sun, Github, Menu, X, LogOut, Settings, Heart, Globe, Share2, Layers } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 import { useAuth } from '../contexts/AuthContext'
 import SmiteLogoDark from '../assets/SmiteD.png'
 import SmiteLogoLight from '../assets/SmiteL.png'
@@ -13,6 +14,7 @@ const Layout = ({ children }: LayoutProps) => {
   const location = useLocation()
   const navigate = useNavigate()
   const { logout, username } = useAuth()
+  const { t, i18n } = useTranslation()
   const [darkMode, setDarkMode] = useState(() => {
     const saved = localStorage.getItem('darkMode')
     return saved ? JSON.parse(saved) : false
@@ -47,15 +49,28 @@ const Layout = ({ children }: LayoutProps) => {
   }, [])
   
   const navItems = [
-    { path: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
-    { path: '/nodes', label: 'Masters', icon: Network },
-    { path: '/servers', label: 'Slaves', icon: Globe },
-    { path: '/tunnels', label: 'Tunnels', icon: Activity },
-    { path: '/mesh', label: 'WireGuard Mesh', icon: Share2 },
-    { path: '/overlay', label: 'Overlay IP', icon: Layers },
-    { path: '/core-health', label: 'Core Health', icon: Heart },
-    { path: '/logs', label: 'Logs', icon: FileText },
+    { path: '/dashboard', label: t('layout.dashboard'), icon: LayoutDashboard },
+    { path: '/nodes', label: t('layout.masters'), icon: Network },
+    { path: '/servers', label: t('layout.slaves'), icon: Globe },
+    { path: '/tunnels', label: t('layout.tunnels'), icon: Activity },
+    { path: '/mesh', label: t('layout.wireguardMesh'), icon: Share2 },
+    { path: '/overlay', label: t('layout.overlayIP'), icon: Layers },
+    { path: '/core-health', label: t('layout.coreHealth'), icon: Heart },
+    { path: '/logs', label: t('layout.logs'), icon: FileText },
   ]
+
+  const changeLanguage = (lng: string) => {
+    i18n.changeLanguage(lng)
+  }
+
+  const getLanguageLabel = (code: string) => {
+    switch (code) {
+      case 'en': return 'English'
+      case 'fa': return 'فارسی'
+      case 'tr': return 'Türkçe'
+      default: return 'English'
+    }
+  }
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
@@ -95,7 +110,7 @@ const Layout = ({ children }: LayoutProps) => {
               </div>
               <div className="text-center">
                 <h1 className="text-xl font-bold bg-gradient-to-r from-blue-600 to-indigo-600 dark:from-blue-400 dark:to-indigo-400 bg-clip-text text-transparent">Smite</h1>
-                <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">Control Panel</p>
+                <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">{t('layout.controlPanel')}</p>
                 {username && (
                   <p className="text-xs text-gray-400 dark:text-gray-500 mt-2 px-2 py-1 bg-gray-100 dark:bg-gray-700 rounded">{username}</p>
                 )}
@@ -127,13 +142,13 @@ const Layout = ({ children }: LayoutProps) => {
           
           {/* Sidebar Footer */}
           <div className="p-4 border-t border-gray-200 dark:border-gray-700 space-y-2">
-            <div className="flex items-center justify-between px-4 py-2">
+            <div className="flex items-center justify-between px-4 py-2 mb-2">
               <button
                 onClick={() => setDarkMode(!darkMode)}
                 className="flex items-center gap-2 text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white transition-colors"
               >
                 {darkMode ? <Sun size={18} /> : <Moon size={18} />}
-                <span className="text-sm font-medium">{darkMode ? 'Light' : 'Dark'}</span>
+                <span className="text-sm font-medium">{darkMode ? t('common.light') : t('common.dark')}</span>
               </button>
               <button
                 onClick={() => {
@@ -143,14 +158,25 @@ const Layout = ({ children }: LayoutProps) => {
                 className="flex items-center gap-2 text-red-600 dark:text-red-400 hover:text-red-700 dark:hover:text-red-300 transition-colors"
               >
                 <LogOut size={18} />
-                <span className="text-sm font-medium">Logout</span>
+                <span className="text-sm font-medium">{t('common.logout')}</span>
               </button>
+            </div>
+            <div className="px-4 py-2 mb-2">
+              <select
+                value={i18n.language}
+                onChange={(e) => changeLanguage(e.target.value)}
+                className="w-full px-3 py-2 text-sm bg-gray-50 dark:bg-gray-700 text-gray-700 dark:text-gray-300 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              >
+                <option value="en">{getLanguageLabel('en')}</option>
+                <option value="fa">{getLanguageLabel('fa')}</option>
+                <option value="tr">{getLanguageLabel('tr')}</option>
+              </select>
             </div>
             <div className="flex flex-col items-center gap-2 text-xs text-gray-500 dark:text-gray-400 pt-2 border-t border-gray-200 dark:border-gray-700">
               <div className="flex items-center gap-1 flex-wrap justify-center">
-                <span>Made with</span>
+                <span>{t('layout.madeWith')}</span>
                 <span className="text-red-500">❤️</span>
-                <span>by</span>
+                <span>{t('layout.by')}</span>
                 <a 
                   href="https://github.com/zZedix" 
                   target="_blank" 

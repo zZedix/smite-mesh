@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Plus, Copy, Trash2, CheckCircle, XCircle, AlertCircle } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 import api from '../api/client'
 
 interface Server {
@@ -13,6 +14,7 @@ interface Server {
 }
 
 const Servers = () => {
+  const { t } = useTranslation()
   const [servers, setServers] = useState<Server[]>([])
   const [loading, setLoading] = useState(true)
   const [showAddModal, setShowAddModal] = useState(false)
@@ -123,8 +125,8 @@ const Servers = () => {
     <div className="w-full max-w-7xl mx-auto">
       <div className="flex justify-between items-center mb-8">
         <div>
-          <h1 className="text-3xl font-bold text-gray-900 dark:text-white mb-2">Slaves</h1>
-          <p className="text-gray-500 dark:text-gray-400">manage your slave servers</p>
+          <h1 className="text-3xl font-bold text-gray-900 dark:text-white mb-2">{t('servers.title')}</h1>
+          <p className="text-gray-500 dark:text-gray-400">{t('servers.subtitle')}</p>
         </div>
         <div className="flex gap-3">
           <button

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Server, Network, Cpu, MemoryStick, Plus, Activity as ActivityIcon } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 import api from '../api/client'
 
 interface Status {
@@ -21,6 +22,7 @@ interface Status {
 }
 
 const Dashboard = () => {
+  const { t } = useTranslation()
   const [status, setStatus] = useState<Status | null>(null)
   const [loading, setLoading] = useState(true)
 
@@ -46,10 +48,10 @@ const Dashboard = () => {
   if (loading || !status) {
     return (
       <div className="flex items-center justify-center min-h-[400px]">
-        <div className="text-center">
-          <div className="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 dark:border-blue-400 mb-4"></div>
-          <p className="text-gray-500 dark:text-gray-400">Loading dashboard...</p>
-        </div>
+          <div className="text-center">
+            <div className="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 dark:border-blue-400 mb-4"></div>
+            <p className="text-gray-500 dark:text-gray-400">{t('common.loading')}</p>
+          </div>
       </div>
     )
   }
@@ -58,37 +60,37 @@ const Dashboard = () => {
     <div className="w-full max-w-7xl mx-auto">
       {/* Header */}
       <div className="mb-8">
-        <h1 className="text-3xl font-bold text-gray-900 dark:text-white mb-2">Dashboard</h1>
-        <p className="text-gray-500 dark:text-gray-400">Overview of your system status and resources</p>
+        <h1 className="text-3xl font-bold text-gray-900 dark:text-white mb-2">{t('dashboard.title')}</h1>
+        <p className="text-gray-500 dark:text-gray-400">{t('dashboard.subtitle')}</p>
       </div>
 
       {/* Stats Grid */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
         <StatCard
-          title="Total Nodes"
+          title={t('dashboard.totalNodes')}
           value={status.nodes.total}
-          subtitle={`${status.nodes.active} active`}
+          subtitle={`${status.nodes.active} ${t('dashboard.active')}`}
           icon={Server}
           color="blue"
         />
         <StatCard
-          title="Total Tunnels"
+          title={t('dashboard.totalTunnels')}
           value={status.tunnels.total}
-          subtitle={`${status.tunnels.active} active`}
+          subtitle={`${status.tunnels.active} ${t('dashboard.active')}`}
           icon={Network}
           color="green"
         />
         <StatCard
-          title="CPU Usage"
+          title={t('dashboard.cpuUsage')}
           value={`${status.system.cpu_percent.toFixed(1)}%`}
-          subtitle="Current usage"
+          subtitle={t('dashboard.currentUsage')}
           icon={Cpu}
           color="purple"
         />
         <StatCard
-          title="Memory Usage"
+          title={t('dashboard.memoryUsage')}
           value={`${status.system.memory_used_gb.toFixed(1)} GB`}
-          subtitle={`${status.system.memory_percent.toFixed(1)}% of ${status.system.memory_total_gb.toFixed(1)} GB`}
+          subtitle={`${status.system.memory_percent.toFixed(1)}% ${t('dashboard.of')} ${status.system.memory_total_gb.toFixed(1)} GB`}
           icon={MemoryStick}
           color="orange"
         />
@@ -102,7 +104,7 @@ const Dashboard = () => {
             <div className="p-2 bg-purple-100 dark:bg-purple-900/30 rounded-lg">
               <ActivityIcon className="w-5 h-5 text-purple-600 dark:text-purple-400" />
             </div>
-            <h2 className="text-xl font-semibold text-gray-900 dark:text-white">System Resources</h2>
+            <h2 className="text-xl font-semibold text-gray-900 dark:text-white">{t('dashboard.systemResources')}</h2>
           </div>
           <div className="space-y-5">
             <ProgressBar
@@ -124,26 +126,26 @@ const Dashboard = () => {
             <div className="p-2 bg-blue-100 dark:bg-blue-900/30 rounded-lg">
               <Plus className="w-5 h-5 text-blue-600 dark:text-blue-400" />
             </div>
-            <h2 className="text-xl font-semibold text-gray-900 dark:text-white">Quick Actions</h2>
+            <h2 className="text-xl font-semibold text-gray-900 dark:text-white">{t('dashboard.quickActions')}</h2>
           </div>
           <div className="space-y-3">
             <button 
               onClick={() => window.location.href = '/tunnels?create=true'}
               className="w-full px-4 py-3 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-lg hover:from-blue-700 hover:to-indigo-700 transition-all duration-200 font-medium shadow-sm hover:shadow-md"
             >
-              Create New Tunnel
+              {t('dashboard.createNewTunnel')}
             </button>
             <button 
               onClick={() => window.location.href = '/nodes?add=true'}
               className="w-full px-4 py-3 bg-gray-50 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-600 transition-all duration-200 font-medium border border-gray-200 dark:border-gray-600"
             >
-              Add Node
+              {t('dashboard.addNode')}
             </button>
             <button 
               onClick={() => window.location.href = '/servers?add=true'}
               className="w-full px-4 py-3 bg-gray-50 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-600 transition-all duration-200 font-medium border border-gray-200 dark:border-gray-600"
             >
-              Add Server
+              {t('dashboard.addServer')}
             </button>
           </div>
         </div>

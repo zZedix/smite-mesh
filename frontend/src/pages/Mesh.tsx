@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Plus, Trash2, Play, RotateCw, Activity, Network } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 import api from '../api/client'
 import React from 'react'
 
@@ -43,6 +44,7 @@ interface MeshStatus {
 }
 
 const Mesh = () => {
+  const { t } = useTranslation()
   const [meshes, setMeshes] = useState<Mesh[]>([])
   const [nodes, setNodes] = useState<Node[]>([])
   const [loading, setLoading] = useState(true)
@@ -177,10 +179,10 @@ const Mesh = () => {
         <div>
           <h1 className="text-3xl font-bold text-gray-900 dark:text-white flex items-center gap-2">
             <Network className="w-8 h-8" />
-            WireGuard Mesh
+            {t('mesh.title')}
           </h1>
           <p className="text-gray-500 dark:text-gray-400 mt-1">
-            Site-to-site VPN mesh networks over FRP
+            {t('mesh.subtitle')}
           </p>
         </div>
         <button
@@ -188,7 +190,7 @@ const Mesh = () => {
           className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
         >
           <Plus size={20} />
-          Create Mesh
+          {t('mesh.createMesh')}
         </button>
       </div>
 

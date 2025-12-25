@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Plus, Trash2, Edit2 } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 import api from '../api/client'
 import { parseAddressPort, formatAddressPort } from '../utils/addressUtils'
 
@@ -20,6 +21,7 @@ interface Tunnel {
 // Removed: Backhaul, GOST, Rathole, Chisel - only FRP supported
 
 const Tunnels = () => {
+  const { t } = useTranslation()
   const [tunnels, setTunnels] = useState<Tunnel[]>([])
   const [nodes, setNodes] = useState<any[]>([])
   const [servers, setServers] = useState<any[]>([])
@@ -87,15 +89,15 @@ const Tunnels = () => {
     <div className="w-full max-w-7xl mx-auto">
       <div className="flex justify-between items-center mb-8">
         <div>
-          <h1 className="text-3xl font-bold text-gray-900 dark:text-white mb-2">Tunnels</h1>
-          <p className="text-gray-500 dark:text-gray-400">Manage your tunnel connections</p>
+          <h1 className="text-3xl font-bold text-gray-900 dark:text-white mb-2">{t('tunnels.title')}</h1>
+          <p className="text-gray-500 dark:text-gray-400">{t('tunnels.subtitle')}</p>
         </div>
         <button
           onClick={() => setShowAddModal(true)}
           className="px-5 py-2.5 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-lg hover:from-blue-700 hover:to-indigo-700 transition-all duration-200 font-medium shadow-sm hover:shadow-md flex items-center gap-2"
         >
           <Plus size={20} />
-          Create Tunnel
+          {t('tunnels.createTunnel')}
         </button>
       </div>
 

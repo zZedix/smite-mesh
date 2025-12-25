@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Network, Plus, AlertTriangle, CheckCircle } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 import api from '../api/client'
 
 interface PoolStatus {
@@ -23,6 +24,7 @@ interface Assignment {
 }
 
 const Overlay = () => {
+  const { t } = useTranslation()
   const [poolStatus, setPoolStatus] = useState<PoolStatus | null>(null)
   const [assignments, setAssignments] = useState<Assignment[]>([])
   const [loading, setLoading] = useState(true)
@@ -104,10 +106,10 @@ const Overlay = () => {
         <div>
           <h1 className="text-3xl font-bold text-gray-900 dark:text-white flex items-center gap-2">
             <Network className="w-8 h-8" />
-            Overlay IP Management
+            {t('overlay.title')}
           </h1>
           <p className="text-gray-500 dark:text-gray-400 mt-1">
-            Manage overlay IP addresses for nodes
+            {t('overlay.subtitle')}
           </p>
         </div>
         {(!poolStatus?.pool_exists) && (

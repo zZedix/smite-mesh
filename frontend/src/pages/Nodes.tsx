@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Plus, Copy, Trash2, CheckCircle, XCircle, Download, AlertCircle } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 import api from '../api/client'
 
 interface Node {
@@ -13,6 +14,7 @@ interface Node {
 }
 
 const Nodes = () => {
+  const { t } = useTranslation()
   const [nodes, setNodes] = useState<Node[]>([])
   const [loading, setLoading] = useState(true)
   const [showAddModal, setShowAddModal] = useState(false)
@@ -97,7 +99,7 @@ const Nodes = () => {
   }
 
   const deleteNode = async (id: string) => {
-    if (!confirm('Are you sure you want to delete this node?')) return
+    if (!confirm(t('nodes.deleteNode'))) return
     
     try {
       await api.delete(`/nodes/${id}`)
@@ -113,7 +115,7 @@ const Nodes = () => {
       <div className="flex items-center justify-center min-h-[400px]">
         <div className="text-center">
           <div className="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 dark:border-blue-400 mb-4"></div>
-          <p className="text-gray-500 dark:text-gray-400">Loading nodes...</p>
+          <p className="text-gray-500 dark:text-gray-400">{t('common.loading')}</p>
         </div>
       </div>
     )
@@ -123,8 +125,8 @@ const Nodes = () => {
     <div className="w-full max-w-7xl mx-auto">
       <div className="flex justify-between items-center mb-8">
         <div>
-          <h1 className="text-3xl font-bold text-gray-900 dark:text-white mb-2">Nodes</h1>
-          <p className="text-gray-500 dark:text-gray-400">Manage your tunnel nodes</p>
+          <h1 className="text-3xl font-bold text-gray-900 dark:text-white mb-2">{t('nodes.title')}</h1>
+          <p className="text-gray-500 dark:text-gray-400">{t('nodes.subtitle')}</p>
         </div>
         <div className="flex gap-3">
           <button
@@ -132,21 +134,21 @@ const Nodes = () => {
             className="px-4 py-2.5 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-all duration-200 font-medium shadow-sm hover:shadow-md flex items-center gap-2"
           >
             <Copy size={18} />
-            View CA Certificate
+            {t('nodes.viewCACertificate')}
           </button>
           <button
             onClick={downloadCA}
             className="px-4 py-2.5 bg-gray-50 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-600 transition-all duration-200 font-medium border border-gray-200 dark:border-gray-600 flex items-center gap-2"
           >
             <Download size={18} />
-            Download CA
+            {t('nodes.downloadCA')}
           </button>
           <button
             onClick={() => setShowAddModal(true)}
             className="px-5 py-2.5 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-lg hover:from-blue-700 hover:to-indigo-700 transition-all duration-200 font-medium shadow-sm hover:shadow-md flex items-center gap-2"
           >
             <Plus size={20} />
-            Add Node
+            {t('nodes.addNode')}
           </button>
         </div>
       </div>
@@ -156,22 +158,22 @@ const Nodes = () => {
           <thead className="bg-gray-50 dark:bg-gray-700/50 border-b border-gray-200 dark:border-gray-600">
             <tr>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
-                Name
+                {t('common.name')}
               </th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
-                Fingerprint
+                {t('nodes.fingerprint')}
               </th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
-                Status
+                {t('common.status')}
               </th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
-                Overlay IP
+                {t('nodes.overlayIP')}
               </th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
-                Last Seen
+                {t('nodes.lastSeen')}
               </th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
-                Actions
+                {t('common.actions')}
               </th>
             </tr>
           </thead>
@@ -221,20 +223,20 @@ const Nodes = () => {
                           return <XCircle size={12} />
                       }
                     }
-                    const getStatusText = (status: string) => {
-                      switch (status) {
-                        case 'connected':
-                          return 'Connected'
-                        case 'connecting':
-                          return 'Connecting'
-                        case 'reconnecting':
-                          return 'Reconnecting'
-                        case 'failed':
-                          return 'Failed'
-                        default:
-                          return status
+                      const getStatusText = (status: string) => {
+                        switch (status) {
+                          case 'connected':
+                            return t('common.connected')
+                          case 'connecting':
+                            return t('common.connecting')
+                          case 'reconnecting':
+                            return t('common.reconnecting')
+                          case 'failed':
+                            return t('common.failed')
+                          default:
+                            return status
+                        }
                       }
-                    }
                     return (
                       <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium ${getStatusColor(connStatus)}`}>
                         {getStatusIcon(connStatus)}
@@ -248,9 +250,9 @@ const Nodes = () => {
                     <code className="text-sm text-blue-600 dark:text-blue-400 font-mono">
                       {node.metadata.overlay_ip}
                     </code>
-                  ) : (
-                    <span className="text-sm text-gray-400 dark:text-gray-500">Not assigned</span>
-                  )}
+                    ) : (
+                      <span className="text-sm text-gray-400 dark:text-gray-500">{t('nodes.notAssigned')}</span>
+                    )}
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
                   {new Date(node.last_seen).toLocaleString()}
@@ -298,6 +300,7 @@ interface AddNodeModalProps {
 }
 
 const AddNodeModal = ({ onClose, onSuccess }: AddNodeModalProps) => {
+  const { t } = useTranslation()
   const [name, setName] = useState('')
   const [ipAddress, setIpAddress] = useState('')
   const [apiPort, setApiPort] = useState('8888')
@@ -321,11 +324,11 @@ const AddNodeModal = ({ onClose, onSuccess }: AddNodeModalProps) => {
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
       <div className="bg-white dark:bg-gray-800 rounded-lg p-6 w-full max-w-md">
-        <h2 className="text-xl font-bold text-gray-900 dark:text-white mb-4">Add Node</h2>
+        <h2 className="text-xl font-bold text-gray-900 dark:text-white mb-4">{t('nodes.addNodeTitle')}</h2>
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-              Node Name
+              {t('nodes.nodeName')}
             </label>
             <input
               type="text"
@@ -337,7 +340,7 @@ const AddNodeModal = ({ onClose, onSuccess }: AddNodeModalProps) => {
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-              IP Address
+              {t('nodes.ipAddress')}
             </label>
             <input
               type="text"
@@ -350,7 +353,7 @@ const AddNodeModal = ({ onClose, onSuccess }: AddNodeModalProps) => {
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-              API Port
+              {t('nodes.apiPort')}
             </label>
             <input
               type="number"
@@ -369,13 +372,13 @@ const AddNodeModal = ({ onClose, onSuccess }: AddNodeModalProps) => {
               onClick={onClose}
               className="px-4 py-2 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-200 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-600"
             >
-              Cancel
+              {t('common.cancel')}
             </button>
             <button
               type="submit"
               className="px-5 py-2.5 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-lg hover:from-blue-700 hover:to-indigo-700 transition-all duration-200 font-medium shadow-sm hover:shadow-md"
             >
-              Add Node
+              {t('nodes.addNode')}
             </button>
           </div>
         </form>
@@ -393,11 +396,12 @@ interface CertModalProps {
 }
 
 const CertModal = ({ certContent, loading, onClose, onCopy, copied }: CertModalProps) => {
+  const { t } = useTranslation()
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
       <div className="bg-white dark:bg-gray-800 rounded-lg p-6 w-full max-w-2xl max-h-[90vh] flex flex-col">
         <div className="flex justify-between items-center mb-4">
-          <h2 className="text-xl font-bold text-gray-900 dark:text-white">CA Certificate</h2>
+          <h2 className="text-xl font-bold text-gray-900 dark:text-white">{t('nodes.caCertificate')}</h2>
           <button
             onClick={onClose}
             className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
@@ -408,14 +412,13 @@ const CertModal = ({ certContent, loading, onClose, onCopy, copied }: CertModalP
         
         <div className="mb-4 p-3 bg-blue-50 dark:bg-blue-900/30 border border-blue-200 dark:border-blue-700 rounded-lg">
           <p className="text-sm text-blue-800 dark:text-blue-200">
-            <strong>Node Installation:</strong> Copy the certificate below (click "Copy Certificate" button). 
-            During node installation, you will be prompted to paste this certificate.
+            <strong>{t('nodes.nodeInstallation')}</strong> {t('nodes.caInstruction')}
           </p>
         </div>
 
         {loading ? (
           <div className="flex-1 flex items-center justify-center">
-            <div className="text-gray-500 dark:text-gray-400">Loading certificate...</div>
+            <div className="text-gray-500 dark:text-gray-400">{t('nodes.loadingCertificate')}</div>
           </div>
         ) : (
           <>
@@ -437,7 +440,7 @@ const CertModal = ({ certContent, loading, onClose, onCopy, copied }: CertModalP
                       await navigator.clipboard.writeText(certContent)
                       onCopy()
                     } else {
-                      alert('Certificate content is empty. Please wait for it to load.')
+                      alert(t('nodes.certificateEmpty'))
                     }
                   } catch (error) {
                     console.error('Failed to copy:', error)
@@ -449,10 +452,10 @@ const CertModal = ({ certContent, loading, onClose, onCopy, copied }: CertModalP
                         document.execCommand('copy')
                         onCopy()
                       } catch (err) {
-                        alert('Failed to copy to clipboard. Please select and copy manually from the text area above.')
+                        alert(t('nodes.failedToCopy'))
                       }
                     } else {
-                      alert('Failed to copy to clipboard. Please select and copy manually from the text area above.')
+                      alert(t('nodes.failedToCopy'))
                     }
                   }
                 }}
@@ -464,13 +467,13 @@ const CertModal = ({ certContent, loading, onClose, onCopy, copied }: CertModalP
                 }`}
               >
                 <Copy size={16} />
-                {copied ? 'Copied!' : 'Copy Certificate'}
+                {copied ? t('nodes.copied') : t('nodes.copyCertificate')}
               </button>
               <button
                 onClick={onClose}
                 className="px-4 py-2 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-200 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-600"
               >
-                Close
+                {t('common.close')}
               </button>
             </div>
           </>
