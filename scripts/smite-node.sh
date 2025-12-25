@@ -114,7 +114,7 @@ cat > .env << EOF
 NODE_API_PORT=$NODE_API_PORT
 NODE_NAME=$NODE_NAME
 NODE_ROLE=$NODE_ROLE
-SMITE_VERSION=${SMITE_VERSION:-latest}
+SMITE_VERSION=${SMITE_VERSION:-main}
 
 PANEL_CA_PATH=/etc/smite-node/certs/ca.crt
 PANEL_ADDRESS=$PANEL_ADDRESS
@@ -123,8 +123,9 @@ EOF
 
 # Clone/update node files from GitHub
 GIT_BRANCH=""
-if [ "${SMITE_VERSION:-latest}" = "next" ]; then
-    GIT_BRANCH="-b next"
+SMITE_VER="${SMITE_VERSION:-main}"
+if [ "$SMITE_VER" = "next" ] || [ "$SMITE_VER" = "dev" ]; then
+    GIT_BRANCH="-b $SMITE_VER"
 fi
 
 if [ ! -f "Dockerfile" ]; then
@@ -153,7 +154,7 @@ else
     fi
 fi
 
-# Install CLI
+# Install CLI - update from repo if it exists, otherwise download
 if [ -f "/opt/smite/cli/smite-node.py" ]; then
     sudo cp /opt/smite/cli/smite-node.py /usr/local/bin/smite-node
     sudo chmod +x /usr/local/bin/smite-node
@@ -161,13 +162,16 @@ elif [ -f "$INSTALL_DIR/../Smite/cli/smite-node.py" ]; then
     sudo cp "$INSTALL_DIR/../Smite/cli/smite-node.py" /usr/local/bin/smite-node
     sudo chmod +x /usr/local/bin/smite-node
 else
-    # Download CLI directly
+    # Download CLI directly - use SMITE_VERSION from env or .env file
     echo "Downloading CLI tool..."
-    CLI_BRANCH="main"
-    if [ "${SMITE_VERSION:-latest}" = "next" ]; then
-        CLI_BRANCH="next"
+    CLI_VERSION="${SMITE_VERSION:-main}"
+    if [ -f ".env" ]; then
+        ENV_VERSION=$(grep "^SMITE_VERSION=" .env | cut -d'=' -f2 | tr -d '"' | tr -d "'" 2>/dev/null || echo "")
+        if [ -n "$ENV_VERSION" ]; then
+            CLI_VERSION="$ENV_VERSION"
+        fi
     fi
-    sudo curl -L https://raw.githubusercontent.com/zZedix/smite-mesh/${CLI_BRANCH}/cli/smite-node.py -o /usr/local/bin/smite-node
+    sudo curl -L https://raw.githubusercontent.com/zZedix/smite-mesh/${CLI_VERSION}/cli/smite-node.py -o /usr/local/bin/smite-node
     sudo chmod +x /usr/local/bin/smite-node
 fi
 
@@ -247,11 +251,14 @@ fi
 # Pull or build Docker image
 echo ""
 echo "Pulling Docker image from GitHub Container Registry..."
-# Set version (default to main, can be overridden with SMITE_VERSION env var)
-# The workflow publishes images with 'main' tag when pushing to main branch
-if [ -z "${SMITE_VERSION}" ]; then
-    export SMITE_VERSION=main
+# Read SMITE_VERSION from .env if not set in environment
+if [ -z "${SMITE_VERSION}" ] && [ -f ".env" ]; then
+    SMITE_VERSION=$(grep "^SMITE_VERSION=" .env | cut -d'=' -f2 | tr -d '"' | tr -d "'" || echo "main")
 fi
+SMITE_VERSION=${SMITE_VERSION:-main}
+export SMITE_VERSION
+
+echo "Using SMITE_VERSION=${SMITE_VERSION}"
 
 if docker pull ghcr.io/zzedix/sm-node:${SMITE_VERSION} 2>/dev/null; then
     echo "✅ Node image pulled from GHCR"

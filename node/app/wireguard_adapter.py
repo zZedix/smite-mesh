@@ -17,6 +17,7 @@ class WireGuardAdapter:
         self.config_dir = config_dir or Path("/etc/smite-node/wireguard")
         self.config_dir.mkdir(parents=True, exist_ok=True)
         self.interfaces: Dict[str, str] = {}
+        self.obfuscator_processes: Dict[str, Dict[str, subprocess.Popen]] = {}  # mesh_id -> {peer_key: process}
         self._resolve_binary_paths()
     
     def _resolve_binary_paths(self):
@@ -41,6 +42,18 @@ class WireGuardAdapter:
             raise FileNotFoundError(
                 "WireGuard binaries not found. Install wireguard-tools package."
             )
+        
+        # Check for wg-obfuscator (optional - available if installed)
+        self.wg_obfuscator_binary = shutil.which("wg-obfuscator")
+        if not self.wg_obfuscator_binary:
+            for path in [Path("/usr/bin/wg-obfuscator"), Path("/usr/local/bin/wg-obfuscator")]:
+                if path.exists():
+                    self.wg_obfuscator_binary = str(path)
+                    break
+        if self.wg_obfuscator_binary:
+            logger.info(f"wg-obfuscator found at {self.wg_obfuscator_binary}")
+        else:
+            logger.debug("wg-obfuscator not found (optional, obfuscation will be disabled)")
     
     def _get_interface_name(self, mesh_id: str) -> str:
         """Generate interface name for mesh"""
@@ -241,6 +254,17 @@ class WireGuardAdapter:
             # Wait a bit after cleanup to ensure IP is fully released
             time.sleep(0.5)
         
+        # Clean up any existing obfuscator processes for this mesh
+        self._cleanup_obfuscator_processes(mesh_id)
+        
+        # Apply wg-obfuscator if available and modify config
+        if self.wg_obfuscator_binary:
+            try:
+                wg_config = self._apply_obfuscation(mesh_id, wg_config)
+                logger.info("Applied wg-obfuscator to WireGuard config")
+            except Exception as e:
+                logger.warning(f"Failed to apply wg-obfuscator, continuing without obfuscation: {e}")
+        
         # Write config file
         config_path.write_text(wg_config, encoding="utf-8")
         os.chmod(config_path, 0o600)
@@ -345,6 +369,9 @@ class WireGuardAdapter:
     
     def remove(self, mesh_id: str):
         """Remove WireGuard mesh configuration"""
+        # Clean up obfuscator processes first
+        self._cleanup_obfuscator_processes(mesh_id)
+        
         if mesh_id not in self.interfaces:
             return
         
@@ -367,6 +394,15 @@ class WireGuardAdapter:
                 config_path.unlink()
             except Exception as e:
                 logger.warning(f"Failed to remove config file: {e}")
+        
+        # Clean up obfuscator config files
+        import glob
+        obfuscator_config_pattern = str(self.config_dir / f"obfuscator-{mesh_id[:8]}-*.conf")
+        for config_file in glob.glob(obfuscator_config_pattern):
+            try:
+                os.unlink(config_file)
+            except Exception as e:
+                logger.debug(f"Failed to remove obfuscator config {config_file}: {e}")
         
         del self.interfaces[mesh_id]
     
@@ -458,4 +494,174 @@ class WireGuardAdapter:
             peers.append(current_peer)
         
         return peers
+    
+    def _apply_obfuscation(self, mesh_id: str, wg_config: str) -> str:
+        """Apply wg-obfuscator to WireGuard config - modify endpoints to use obfuscator"""
+        import hashlib
+        import re
+        
+        if not self.wg_obfuscator_binary:
+            return wg_config
+        
+        # Initialize obfuscator processes dict for this mesh
+        if mesh_id not in self.obfuscator_processes:
+            self.obfuscator_processes[mesh_id] = {}
+        
+        # Parse WireGuard config to find peer sections
+        lines = wg_config.splitlines()
+        modified_lines = []
+        current_peer_key = None
+        current_peer_endpoint = None
+        in_peer_section = False
+        peer_lines = []
+        
+        i = 0
+        while i < len(lines):
+            line = lines[i].strip()
+            
+            # Detect start of peer section
+            if line.startswith("[Peer]"):
+                # Process previous peer if any
+                if current_peer_key and current_peer_endpoint:
+                    modified_lines.extend(self._process_peer_with_obfuscator(
+                        mesh_id, current_peer_key, current_peer_endpoint, peer_lines
+                    ))
+                else:
+                    modified_lines.extend(peer_lines)
+                
+                # Start new peer
+                peer_lines = [lines[i]]
+                in_peer_section = True
+                current_peer_key = None
+                current_peer_endpoint = None
+                i += 1
+                continue
+            
+            if in_peer_section:
+                peer_lines.append(lines[i])
+                
+                # Extract public key (used as peer identifier)
+                if line.startswith("PublicKey = "):
+                    current_peer_key = line.split("=", 1)[1].strip()
+                
+                # Extract endpoint
+                elif line.startswith("Endpoint = "):
+                    current_peer_endpoint = line.split("=", 1)[1].strip()
+                
+                # Check if this is the end of peer section (next [Peer] or end of file)
+                if i == len(lines) - 1:
+                    # Last line, process this peer
+                    if current_peer_key and current_peer_endpoint:
+                        modified_lines.extend(self._process_peer_with_obfuscator(
+                            mesh_id, current_peer_key, current_peer_endpoint, peer_lines
+                        ))
+                    else:
+                        modified_lines.extend(peer_lines)
+                    in_peer_section = False
+                
+                i += 1
+            else:
+                modified_lines.append(lines[i])
+                i += 1
+        
+        return "\n".join(modified_lines)
+    
+    def _process_peer_with_obfuscator(
+        self, mesh_id: str, peer_key: str, endpoint: str, peer_lines: list
+    ) -> list:
+        """Process a peer endpoint through wg-obfuscator"""
+        import hashlib
+        import re
+        
+        # Parse endpoint (format: IP:port or [IPv6]:port)
+        endpoint_match = re.match(r'^\[?([^\]]+)\]?:(\d+)$', endpoint.strip())
+        if not endpoint_match:
+            logger.warning(f"Could not parse endpoint {endpoint}, skipping obfuscation")
+            return peer_lines
+        
+        real_host = endpoint_match.group(1)
+        real_port = int(endpoint_match.group(2))
+        
+        # Generate unique local port for this peer's obfuscator
+        port_hash = int(hashlib.md5(f"{mesh_id}-{peer_key}-{endpoint}".encode()).hexdigest()[:8], 16)
+        local_port = 19000 + (port_hash % 5000)  # Use ports 19000-23999
+        
+        # Create obfuscator config
+        obfuscator_config_path = self.config_dir / f"obfuscator-{mesh_id[:8]}-{peer_key[:8]}.conf"
+        
+        # Generate source port (for static bindings)
+        source_port_hash = int(hashlib.md5(f"{mesh_id}-{peer_key}-source".encode()).hexdigest()[:8], 16)
+        source_port = 24000 + (source_port_hash % 1000)  # Use ports 24000-24999
+        
+        obfuscator_config = f"""[server]
+bind-addr = 127.0.0.1:{local_port}
+server-endpoint = {real_host}:{real_port}
+source-lport = {source_port}
+
+[client]
+bind-addr = 127.0.0.1:{local_port}
+server-endpoint = {real_host}:{real_port}
+source-lport = {source_port}
+"""
+        
+        try:
+            obfuscator_config_path.write_text(obfuscator_config, encoding="utf-8")
+            os.chmod(obfuscator_config_path, 0o600)
+            
+            # Start wg-obfuscator process
+            process = subprocess.Popen(
+                [self.wg_obfuscator_binary, "-c", str(obfuscator_config_path)],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                start_new_session=True
+            )
+            
+            # Store process for cleanup
+            self.obfuscator_processes[mesh_id][peer_key] = process
+            
+            # Give obfuscator a moment to start
+            time.sleep(0.2)
+            
+            # Check if process is still running
+            if process.poll() is not None:
+                stdout, stderr = process.communicate()
+                logger.error(f"wg-obfuscator failed to start: {stderr.decode()}")
+                raise RuntimeError(f"wg-obfuscator process died: {stderr.decode()}")
+            
+            logger.info(f"Started wg-obfuscator for peer {peer_key[:8]}... on localhost:{local_port} -> {real_host}:{real_port}")
+            
+            # Modify peer_lines to use localhost:local_port
+            modified_peer_lines = []
+            for line in peer_lines:
+                if line.strip().startswith("Endpoint = "):
+                    modified_peer_lines.append(f"Endpoint = 127.0.0.1:{local_port}")
+                else:
+                    modified_peer_lines.append(line)
+            
+            return modified_peer_lines
+            
+        except Exception as e:
+            logger.error(f"Failed to start wg-obfuscator for peer {peer_key[:8]}...: {e}", exc_info=True)
+            # Return original lines if obfuscation fails
+            return peer_lines
+    
+    def _cleanup_obfuscator_processes(self, mesh_id: str):
+        """Stop and clean up obfuscator processes for a mesh"""
+        if mesh_id not in self.obfuscator_processes:
+            return
+        
+        for peer_key, process in self.obfuscator_processes[mesh_id].items():
+            try:
+                if process.poll() is None:  # Process is still running
+                    process.terminate()
+                    try:
+                        process.wait(timeout=2)
+                    except subprocess.TimeoutExpired:
+                        process.kill()
+                        process.wait()
+                    logger.info(f"Stopped wg-obfuscator process for peer {peer_key[:8]}...")
+            except Exception as e:
+                logger.warning(f"Error stopping obfuscator process for peer {peer_key[:8]}...: {e}")
+        
+        del self.obfuscator_processes[mesh_id]
 

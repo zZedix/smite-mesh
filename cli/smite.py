@@ -700,40 +700,42 @@ def cmd_update(args):
     """Update panel (pull images and recreate)"""
     print("Updating panel...")
     
-    # Ensure SMITE_VERSION is set to 'main' in .env
+    # Update CLI script if source exists in /opt/smite
+    cli_source = Path("/opt/smite/cli/smite.py")
+    cli_dest = Path("/usr/local/bin/smite")
+    if cli_source.exists():
+        try:
+            shutil.copy2(cli_source, cli_dest)
+            os.chmod(cli_dest, 0o755)
+        except Exception as e:
+            print(f"Warning: Could not update CLI script: {e}")
+    
+    # Read SMITE_VERSION from .env, default to 'main' if not set
     env_file = get_env_file()
-    env_updated = False
+    smite_version = "main"
+    
+    if env_file.exists():
+        for line in env_file.read_text().splitlines():
+            line = line.strip()
+            if line.startswith("SMITE_VERSION="):
+                smite_version = line.split("=", 1)[1].strip().strip('"\'')
+                break
+    
+    # Ensure SMITE_VERSION is set in .env if it doesn't exist
     if env_file.exists():
         env_content = env_file.read_text()
-        lines = env_content.split('\n')
-        updated_lines = []
-        smite_version_set = False
-        for line in lines:
-            if line.strip().startswith("SMITE_VERSION="):
-                # Update to main if it's set to something else
-                if "SMITE_VERSION=main" not in line:
-                    updated_lines.append("SMITE_VERSION=main")
-                    env_updated = True
-                else:
-                    updated_lines.append(line)
-                smite_version_set = True
-            else:
-                updated_lines.append(line)
-        if not smite_version_set:
-            updated_lines.append("SMITE_VERSION=main")
-            env_updated = True
-        if env_updated:
-            env_file.write_text('\n'.join(updated_lines))
-            print("Setting SMITE_VERSION=main in .env file")
+        if "SMITE_VERSION=" not in env_content:
+            with open(env_file, 'a') as f:
+                f.write(f"\nSMITE_VERSION={smite_version}\n")
     else:
         env_file.parent.mkdir(parents=True, exist_ok=True)
-        env_file.write_text("SMITE_VERSION=main\n")
-        env_updated = True
-        print("Created .env file with SMITE_VERSION=main")
+        env_file.write_text(f"SMITE_VERSION={smite_version}\n")
     
-    # Ensure environment variable is set for docker compose
+    print(f"Using SMITE_VERSION={smite_version}")
+    
+    # Pass SMITE_VERSION to docker compose
     env_vars = os.environ.copy()
-    env_vars["SMITE_VERSION"] = "main"
+    env_vars["SMITE_VERSION"] = smite_version
     
     run_docker_compose(["pull"], env_vars=env_vars)
     run_docker_compose(["up", "-d", "--force-recreate"], env_vars=env_vars)

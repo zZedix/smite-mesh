@@ -88,6 +88,11 @@ if [ -d "$INSTALL_DIR" ] && [ -f "$INSTALL_DIR/docker-compose.yml" ]; then
     if [ -d ".git" ]; then
         echo "Updating repository..."
         git pull --quiet || true
+        # Update CLI scripts after git pull
+        if [ -f "cli/smite.py" ]; then
+            cp cli/smite.py /usr/local/bin/smite 2>/dev/null || true
+            chmod +x /usr/local/bin/smite 2>/dev/null || true
+        fi
     fi
 else
     # Clone from GitHub

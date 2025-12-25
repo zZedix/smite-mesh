@@ -228,7 +228,7 @@ const Mesh = () => {
               <div className="space-y-2 mb-4">
                 <div className="text-sm text-gray-600 dark:text-gray-400">
                   <span className="font-medium">Nodes:</span>{' '}
-                  {mesh.mesh_config ? Object.keys(mesh.mesh_config).length : 0}
+                  {mesh.mesh_config?.nodes ? Object.keys(mesh.mesh_config.nodes).length : 0}
                 </div>
                 <div className="text-sm text-gray-600 dark:text-gray-400">
                   <span className="font-medium">Created:</span>{' '}

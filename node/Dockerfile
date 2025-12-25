@@ -39,6 +39,30 @@ RUN set -eux; \
     /usr/local/bin/frpc --version || true; \
     /usr/local/bin/frps --version || true
 
+# Stage 2.5: Install wg-obfuscator (cached layer)
+FROM base AS obfuscator-bin
+RUN set -eux; \
+    ARCH_RAW="$(uname -m)"; \
+    case "$ARCH_RAW" in \
+        x86_64) ARCH="x64" ;; \
+        aarch64) ARCH="arm64" ;; \
+        armv7l) ARCH="armv7-hf" ;; \
+        armv6l) ARCH="armv6-softfp" ;; \
+        *) ARCH="x64" ;; \
+    esac; \
+    OBFUSCATOR_VERSION="1.5"; \
+    OBFUSCATOR_TMP="$(mktemp -d)"; \
+    OBFUSCATOR_URL="https://github.com/ClusterM/wg-obfuscator/releases/download/v${OBFUSCATOR_VERSION}/wg-obfuscator-v${OBFUSCATOR_VERSION}-linux-${ARCH}.tar.gz"; \
+    curl -fsSL -L "$OBFUSCATOR_URL" -o "$OBFUSCATOR_TMP/wg-obfuscator.tar.gz"; \
+    cd "$OBFUSCATOR_TMP"; \
+    tar -xzf wg-obfuscator.tar.gz; \
+    OBFUSCATOR_BIN="$(find . -type f -name 'wg-obfuscator' | head -n1)"; \
+    if [ -n "$OBFUSCATOR_BIN" ]; then \
+        install -Dm755 "$OBFUSCATOR_BIN" /usr/local/bin/wg-obfuscator; \
+    fi; \
+    rm -rf "$OBFUSCATOR_TMP"; \
+    /usr/local/bin/wg-obfuscator --version || true
+
 # Stage 3: Python dependencies (cached layer)
 FROM base AS deps
 WORKDIR /app
@@ -58,6 +82,7 @@ ENV SMITE_VERSION="${SMITE_VERSION}"
 # Copy binaries from binary stages
 COPY --from=frp-bin /usr/local/bin/frpc /usr/local/bin/frpc
 COPY --from=frp-bin /usr/local/bin/frps /usr/local/bin/frps
+COPY --from=obfuscator-bin /usr/local/bin/wg-obfuscator /usr/local/bin/wg-obfuscator
 
 # Copy Python dependencies from deps stage
 COPY --from=deps /usr/local /usr/local
