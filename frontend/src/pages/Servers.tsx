@@ -123,8 +123,8 @@ const Servers = () => {
     <div className="w-full max-w-7xl mx-auto">
       <div className="flex justify-between items-center mb-8">
         <div>
-          <h1 className="text-3xl font-bold text-gray-900 dark:text-white mb-2">Foreign Servers</h1>
-          <p className="text-gray-500 dark:text-gray-400">Manage your foreign tunnel servers</p>
+          <h1 className="text-3xl font-bold text-gray-900 dark:text-white mb-2">Slaves</h1>
+          <p className="text-gray-500 dark:text-gray-400">manage your slave servers</p>
         </div>
         <div className="flex gap-3">
           <button
@@ -175,7 +175,7 @@ const Servers = () => {
             {servers.length === 0 ? (
               <tr>
                 <td colSpan={7} className="px-6 py-12 text-center text-gray-500 dark:text-gray-400">
-                  No foreign servers found. Add a server to get started.
+                  No slave servers found. Add a server to get started.
                 </td>
               </tr>
             ) : (
@@ -330,7 +330,7 @@ const AddServerModal = ({ onClose, onSuccess }: AddServerModalProps) => {
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
       <div className="bg-white dark:bg-gray-800 rounded-lg p-6 w-full max-w-md">
-        <h2 className="text-xl font-bold text-gray-900 dark:text-white mb-4">Add Foreign Server</h2>
+        <h2 className="text-xl font-bold text-gray-900 dark:text-white mb-4">Add Slave Server</h2>
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
@@ -406,7 +406,7 @@ const CertModal = ({ certContent, loading, onClose, onCopy, copied }: CertModalP
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
       <div className="bg-white dark:bg-gray-800 rounded-lg p-6 w-full max-w-2xl max-h-[90vh] flex flex-col">
         <div className="flex justify-between items-center mb-4">
-          <h2 className="text-xl font-bold text-gray-900 dark:text-white">Foreign Server CA Certificate</h2>
+          <h2 className="text-xl font-bold text-gray-900 dark:text-white">Slave Server CA Certificate</h2>
           <button
             onClick={onClose}
             className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
@@ -417,8 +417,8 @@ const CertModal = ({ certContent, loading, onClose, onCopy, copied }: CertModalP
         
         <div className="mb-4 p-3 bg-blue-50 dark:bg-blue-900/30 border border-blue-200 dark:border-blue-700 rounded-lg">
           <p className="text-sm text-blue-800 dark:text-blue-200">
-            <strong>Foreign Server Installation:</strong> Copy the certificate below (click "Copy Certificate" button). 
-            During foreign server installation, you will be prompted to paste this certificate.
+            <strong>Slave Server Installation:</strong> Copy the certificate below (click "Copy Certificate" button). 
+            During slave server installation, you will be prompted to paste this certificate.
           </p>
         </div>
 

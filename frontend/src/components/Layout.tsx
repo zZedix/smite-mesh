@@ -48,8 +48,8 @@ const Layout = ({ children }: LayoutProps) => {
   
   const navItems = [
     { path: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
-    { path: '/nodes', label: 'Nodes', icon: Network },
-    { path: '/servers', label: 'Servers', icon: Globe },
+    { path: '/nodes', label: 'Masters', icon: Network },
+    { path: '/servers', label: 'Slaves', icon: Globe },
     { path: '/tunnels', label: 'Tunnels', icon: Activity },
     { path: '/mesh', label: 'WireGuard Mesh', icon: Share2 },
     { path: '/overlay', label: 'Overlay IP', icon: Layers },

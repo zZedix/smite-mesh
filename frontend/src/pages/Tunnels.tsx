@@ -611,7 +611,7 @@ const AddTunnelModal = ({ nodes, servers, onClose, onSuccess }: AddTunnelModalPr
           <div className="grid grid-cols-2 gap-4">
             <div>
               <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                Iran Node
+                Master Node
               </label>
               <select
                 value={formData.iran_node_id || formData.node_id}
@@ -619,7 +619,7 @@ const AddTunnelModal = ({ nodes, servers, onClose, onSuccess }: AddTunnelModalPr
                 className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg dark:bg-gray-700 dark:text-white"
                 required={formData.core === 'frp'}
               >
-                <option value="">Select an Iran node</option>
+                <option value="">Select a Master node</option>
                 {nodes.map((node) => (
                   <option key={node.id} value={node.id}>
                     {node.name}
@@ -629,7 +629,7 @@ const AddTunnelModal = ({ nodes, servers, onClose, onSuccess }: AddTunnelModalPr
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                Foreign Server
+                Slave Node
               </label>
               <select
                 value={formData.foreign_node_id}
@@ -637,7 +637,7 @@ const AddTunnelModal = ({ nodes, servers, onClose, onSuccess }: AddTunnelModalPr
                 className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg dark:bg-gray-700 dark:text-white"
                 required={formData.core === 'frp'}
               >
-                <option value="">Select a foreign server</option>
+                <option value="">Select a slave node</option>
                 {servers.map((server) => (
                   <option key={server.id} value={server.id}>
                     {server.name}

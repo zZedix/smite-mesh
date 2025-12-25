@@ -59,19 +59,19 @@ NODE_NAME=${NODE_NAME:-node-1}
 echo ""
 echo "=== Server Role ==="
 echo "Select server role:"
-echo "1) Iran Server (runs tunnel clients, connects to foreign servers)"
-echo "2) Foreign Server (runs tunnel servers, accepts connections from Iran servers)"
+echo "1) Master Server (runs tunnel clients, connects to slave servers)"
+echo "2) Slave Server (runs tunnel servers, accepts connections from master servers)"
 read -p "Enter choice [1 or 2] (default: 1): " ROLE_CHOICE
 ROLE_CHOICE=${ROLE_CHOICE:-1}
 
 if [ "$ROLE_CHOICE" = "2" ]; then
     NODE_ROLE="foreign"
-    echo "✅ Selected: Foreign Server"
-    CA_SOURCE="Servers > View CA Certificate"
+    echo "✅ Selected: Slave Server"
+    CA_SOURCE="Slaves > View CA Certificate"
 else
     NODE_ROLE="iran"
-    echo "✅ Selected: Iran Server"
-    CA_SOURCE="Nodes > View CA Certificate"
+    echo "✅ Selected: Master Server"
+    CA_SOURCE="Masters > View CA Certificate"
 fi
 
 echo ""

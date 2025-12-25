@@ -484,7 +484,7 @@ const CreateMeshModal = ({ nodes, onClose, onSuccess }: CreateMeshModalProps) =>
                 Select Nodes & Servers (at least 2)
               </label>
               <p className="text-xs text-gray-500 dark:text-gray-400 mb-2">
-                Both Iran nodes and Foreign servers can participate in the mesh
+                Both Master nodes and Slave servers can participate in the mesh
               </p>
               <div className="border border-gray-300 dark:border-gray-600 rounded-lg p-3 max-h-48 overflow-y-auto">
                 {nodes.length === 0 ? (
@@ -492,7 +492,7 @@ const CreateMeshModal = ({ nodes, onClose, onSuccess }: CreateMeshModalProps) =>
                 ) : (
                   nodes.map((node) => {
                     const nodeRole = node.metadata?.role || 'iran'
-                    const roleLabel = nodeRole === 'foreign' ? 'Foreign' : 'Iran'
+                    const roleLabel = nodeRole === 'foreign' ? 'Slave' : 'Master'
                     return (
                       <div key={node.id} className="flex items-center gap-3 mb-2">
                         <input
