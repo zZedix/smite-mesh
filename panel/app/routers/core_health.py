@@ -337,9 +337,9 @@ async def _reset_core(core: str, app_or_request, db: AsyncSession):
                 local_port = client_spec.get("local_port") or bind_port
                 client_spec["local_ip"] = local_ip
                 client_spec["local_port"] = local_port
-            else:
+                else:
                 logger.warning(f"Tunnel {tunnel.id}: Unsupported core type {core}, skipping")
-                continue
+                    continue
             
             if not iran_node.node_metadata.get("api_address"):
                 iran_node.node_metadata["api_address"] = f"http://{iran_node.node_metadata.get('ip_address', iran_node.fingerprint)}:{iran_node.node_metadata.get('api_port', 8888)}"

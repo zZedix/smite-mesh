@@ -223,20 +223,20 @@ const Nodes = () => {
                           return <XCircle size={12} />
                       }
                     }
-                      const getStatusText = (status: string) => {
-                        switch (status) {
-                          case 'connected':
+                    const getStatusText = (status: string) => {
+                      switch (status) {
+                        case 'connected':
                             return t('common.connected')
-                          case 'connecting':
+                        case 'connecting':
                             return t('common.connecting')
-                          case 'reconnecting':
+                        case 'reconnecting':
                             return t('common.reconnecting')
-                          case 'failed':
+                        case 'failed':
                             return t('common.failed')
-                          default:
-                            return status
-                        }
+                        default:
+                          return status
                       }
+                    }
                     return (
                       <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium ${getStatusColor(connStatus)}`}>
                         {getStatusIcon(connStatus)}
@@ -250,9 +250,9 @@ const Nodes = () => {
                     <code className="text-sm text-blue-600 dark:text-blue-400 font-mono">
                       {node.metadata.overlay_ip}
                     </code>
-                    ) : (
+                  ) : (
                       <span className="text-sm text-gray-400 dark:text-gray-500">{t('nodes.notAssigned')}</span>
-                    )}
+                  )}
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
                   {new Date(node.last_seen).toLocaleString()}
