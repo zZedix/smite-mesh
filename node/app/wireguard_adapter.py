@@ -257,13 +257,16 @@ class WireGuardAdapter:
         # Clean up any existing obfuscator processes for this mesh
         self._cleanup_obfuscator_processes(mesh_id)
         
-        # Apply wg-obfuscator if available and modify config
-        if self.wg_obfuscator_binary:
-            try:
-                wg_config = self._apply_obfuscation(mesh_id, wg_config)
-                logger.info("Applied wg-obfuscator to WireGuard config")
-            except Exception as e:
-                logger.warning(f"Failed to apply wg-obfuscator, continuing without obfuscation: {e}")
+        # NOTE: wg-obfuscator is disabled when using FRP tunnels
+        # WireGuard traffic is already tunneled through FRP, so obfuscation is not needed
+        # and would break connectivity. Obfuscation is only useful for direct WireGuard connections.
+        # Disabled obfuscation to fix connectivity issues with FRP-based mesh networking
+        # if self.wg_obfuscator_binary:
+        #     try:
+        #         wg_config = self._apply_obfuscation(mesh_id, wg_config)
+        #         logger.info("Applied wg-obfuscator to WireGuard config")
+        #     except Exception as e:
+        #         logger.warning(f"Failed to apply wg-obfuscator, continuing without obfuscation: {e}")
         
         # Write config file
         config_path.write_text(wg_config, encoding="utf-8")
