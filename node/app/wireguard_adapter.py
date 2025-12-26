@@ -596,9 +596,10 @@ class WireGuardAdapter:
         source_port_hash = int(hashlib.md5(f"{mesh_id}-{peer_key}-source".encode()).hexdigest()[:8], 16)
         source_port = 24000 + (source_port_hash % 1000)  # Use ports 24000-24999
         
-        # wg-obfuscator client config: only [client] section, use 'listen' not 'bind-addr'
+        # wg-obfuscator client config: only [client] section
+        # Format: local = IP:port, server-endpoint = IP:port, source-lport = port
         obfuscator_config = f"""[client]
-listen = 127.0.0.1:{local_port}
+local = 127.0.0.1:{local_port}
 server-endpoint = {real_host}:{real_port}
 source-lport = {source_port}
 """
