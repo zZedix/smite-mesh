@@ -593,12 +593,15 @@ class WireGuardAdapter:
         obfuscator_config_path = self.config_dir / f"obfuscator-{mesh_id[:8]}-{sanitized_peer_key}.conf"
         
         # wg-obfuscator config uses [main] section (not [client])
-        # Format: source-if = IP (interface to listen on), source-lport = port (local port), target = IP:port (remote endpoint)
+        # Format: source-if = IP, source-lport = port, target = IP:port, key = obfuscation key (required)
         # Reference: https://github.com/ClusterM/wg-obfuscator
+        # Generate a consistent key based on mesh_id and peer_key for this connection
+        obfuscator_key_hash = hashlib.sha256(f"{mesh_id}-{peer_key}-obfuscator-key".encode()).hexdigest()[:32]
         obfuscator_config = f"""[main]
 source-if = 127.0.0.1
 source-lport = {local_port}
 target = {real_host}:{real_port}
+key = {obfuscator_key_hash}
 """
         
         try:
