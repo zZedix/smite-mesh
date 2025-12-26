@@ -586,8 +586,11 @@ class WireGuardAdapter:
         port_hash = int(hashlib.md5(f"{mesh_id}-{peer_key}-{endpoint}".encode()).hexdigest()[:8], 16)
         local_port = 19000 + (port_hash % 5000)  # Use ports 19000-23999
         
+        # Sanitize peer key for filename (replace invalid characters: /, +, =)
+        sanitized_peer_key = peer_key[:8].replace("/", "_").replace("+", "-").replace("=", "_")
+        
         # Create obfuscator config
-        obfuscator_config_path = self.config_dir / f"obfuscator-{mesh_id[:8]}-{peer_key[:8]}.conf"
+        obfuscator_config_path = self.config_dir / f"obfuscator-{mesh_id[:8]}-{sanitized_peer_key}.conf"
         
         # Generate source port (for static bindings)
         source_port_hash = int(hashlib.md5(f"{mesh_id}-{peer_key}-source".encode()).hexdigest()[:8], 16)
