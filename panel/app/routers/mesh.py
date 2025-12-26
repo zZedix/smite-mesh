@@ -84,12 +84,35 @@ async def create_mesh(
             detail=f"Overlay subnet must match IPAM pool CIDR: {pool.cidr}"
         )
     
+    # Helper function to parse and validate comma-separated LAN subnets
+    def parse_lan_subnets(subnet_string: str) -> List[str]:
+        """Parse comma-separated LAN subnets and validate CIDR notation"""
+        if not subnet_string or not subnet_string.strip():
+            return []
+        
+        import ipaddress
+        subnets = []
+        for subnet in subnet_string.split(','):
+            subnet = subnet.strip()
+            if subnet:
+                try:
+                    # Validate CIDR notation
+                    ipaddress.ip_network(subnet, strict=False)
+                    subnets.append(subnet)
+                except ValueError as e:
+                    raise HTTPException(
+                        status_code=400,
+                        detail=f"Invalid LAN subnet CIDR '{subnet}': {str(e)}"
+                    )
+        return subnets
+    
     node_configs = []
     node_ipam_ips = {}
     
     for node in nodes:
         node_id = node.id
-        lan_subnet = mesh.lan_subnets.get(node_id, "")
+        lan_subnet_string = mesh.lan_subnets.get(node_id, "")
+        lan_subnets_list = parse_lan_subnets(lan_subnet_string)
         
         overlay_ip = await ipam_manager.get_node_ip(db, node_id)
         if not overlay_ip:
@@ -104,7 +127,7 @@ async def create_mesh(
         node_configs.append({
             "node_id": node_id,
             "name": node.name,
-            "lan_subnet": lan_subnet,
+            "lan_subnet": lan_subnets_list,  # Now a list instead of string
             "overlay_ip": overlay_ip
         })
     
@@ -1005,12 +1028,17 @@ async def get_mesh_status(
             )
             node = node_result.scalar_one_or_none()
             
-            # Get LAN subnet from mesh config
+            # Get LAN subnet from mesh config (handle both list and string formats)
             node_config = mesh_configs.get(node_id, {})
             if isinstance(node_config, dict):
-                lan_subnet = node_config.get("lan_subnet", "")
-                if lan_subnet:
-                    node_data["lan_subnet"] = lan_subnet
+                lan_subnet_data = node_config.get("lan_subnet", "")
+                # Handle both list (new format) and string (legacy format)
+                if isinstance(lan_subnet_data, list):
+                    # New format: join list with comma for display
+                    node_data["lan_subnet"] = ",".join(lan_subnet_data) if lan_subnet_data else ""
+                elif isinstance(lan_subnet_data, str) and lan_subnet_data:
+                    # Legacy format: single subnet string
+                    node_data["lan_subnet"] = lan_subnet_data
                 node_data["node_name"] = node.name if node else node_id
             
             overlay_ip = await ipam_manager.get_node_ip(db, node_id)

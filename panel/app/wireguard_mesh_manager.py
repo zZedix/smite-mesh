@@ -118,7 +118,14 @@ class WireGuardMeshManager:
         for node in nodes:
             node_id = node["node_id"]
             node_name = node.get("name", node_id)
-            lan_subnet = node.get("lan_subnet", "")
+            # Handle both old format (string) and new format (list) for backward compatibility
+            lan_subnet_data = node.get("lan_subnet", "")
+            if isinstance(lan_subnet_data, str):
+                # Legacy format: single subnet string (empty string means no subnets)
+                lan_subnets_list = [lan_subnet_data] if lan_subnet_data else []
+            else:
+                # New format: list of subnets
+                lan_subnets_list = lan_subnet_data if isinstance(lan_subnet_data, list) else []
             
             peers = []
             if topology == "full-mesh":
@@ -126,13 +133,18 @@ class WireGuardMeshManager:
                     if peer_node["node_id"] == node_id:
                         continue
                     peer_id = peer_node["node_id"]
-                    peer_lan_subnet = peer_node.get("lan_subnet", "")
+                    peer_lan_subnet_data = peer_node.get("lan_subnet", "")
+                    # Handle both old and new formats
+                    if isinstance(peer_lan_subnet_data, str):
+                        peer_lan_subnets_list = [peer_lan_subnet_data] if peer_lan_subnet_data else []
+                    else:
+                        peer_lan_subnets_list = peer_lan_subnet_data if isinstance(peer_lan_subnet_data, list) else []
                     
                     peer_config = {
                         "node_id": peer_id,
                         "public_key": node_keys[peer_id]["public_key"],
                         "overlay_ip": node_ips[peer_id],
-                        "lan_subnet": peer_lan_subnet
+                        "lan_subnet": peer_lan_subnets_list
                     }
                     peers.append(peer_config)
             elif topology == "hub-spoke":
@@ -140,21 +152,31 @@ class WireGuardMeshManager:
                 if node_id == hub_node_id:
                     for peer_node in nodes[1:]:
                         peer_id = peer_node["node_id"]
-                        peer_lan_subnet = peer_node.get("lan_subnet", "")
+                        peer_lan_subnet_data = peer_node.get("lan_subnet", "")
+                        # Handle both old and new formats
+                        if isinstance(peer_lan_subnet_data, str):
+                            peer_lan_subnets_list = [peer_lan_subnet_data] if peer_lan_subnet_data else []
+                        else:
+                            peer_lan_subnets_list = peer_lan_subnet_data if isinstance(peer_lan_subnet_data, list) else []
                         peer_config = {
                             "node_id": peer_id,
                             "public_key": node_keys[peer_id]["public_key"],
                             "overlay_ip": node_ips[peer_id],
-                            "lan_subnet": peer_lan_subnet
+                            "lan_subnet": peer_lan_subnets_list
                         }
                         peers.append(peer_config)
                 else:
-                    peer_lan_subnet = nodes[0].get("lan_subnet", "")
+                    hub_lan_subnet_data = nodes[0].get("lan_subnet", "")
+                    # Handle both old and new formats
+                    if isinstance(hub_lan_subnet_data, str):
+                        hub_lan_subnets_list = [hub_lan_subnet_data] if hub_lan_subnet_data else []
+                    else:
+                        hub_lan_subnets_list = hub_lan_subnet_data if isinstance(hub_lan_subnet_data, list) else []
                     peer_config = {
                         "node_id": hub_node_id,
                         "public_key": node_keys[hub_node_id]["public_key"],
                         "overlay_ip": node_ips[hub_node_id],
-                        "lan_subnet": peer_lan_subnet
+                        "lan_subnet": hub_lan_subnets_list
                     }
                     peers.append(peer_config)
             
@@ -164,7 +186,7 @@ class WireGuardMeshManager:
                 "private_key": node_keys[node_id]["private_key"],
                 "public_key": node_keys[node_id]["public_key"],
                 "overlay_ip": node_ips[node_id],
-                "lan_subnet": lan_subnet,
+                "lan_subnet": lan_subnets_list,  # Now always a list
                 "peers": peers,
                 "mtu": mtu
             }
@@ -213,8 +235,15 @@ class WireGuardMeshManager:
                 continue
             
             allowed_ips = [f"{peer['overlay_ip']}/32"]
-            if peer.get("lan_subnet"):
-                allowed_ips.append(peer["lan_subnet"])
+            # Handle multiple LAN subnets (list) or legacy single subnet (string)
+            peer_lan_subnets = peer.get("lan_subnet", [])
+            if isinstance(peer_lan_subnets, str):
+                # Legacy format: single subnet string
+                if peer_lan_subnets:
+                    allowed_ips.append(peer_lan_subnets)
+            elif isinstance(peer_lan_subnets, list):
+                # New format: list of subnets
+                allowed_ips.extend(peer_lan_subnets)
             allowed_ips_str = ', '.join(allowed_ips)
             
             if isinstance(endpoints, dict) and "udp" in endpoints and "tcp" in endpoints:
@@ -248,8 +277,14 @@ class WireGuardMeshManager:
         """Get routing commands for remote LAN subnets"""
         routes = []
         for peer in node_config["peers"]:
-            if peer.get("lan_subnet"):
-                routes.append(peer["lan_subnet"])
+            peer_lan_subnets = peer.get("lan_subnet", [])
+            if isinstance(peer_lan_subnets, str):
+                # Legacy format: single subnet string
+                if peer_lan_subnets:
+                    routes.append(peer_lan_subnets)
+            elif isinstance(peer_lan_subnets, list):
+                # New format: list of subnets
+                routes.extend(peer_lan_subnets)
         return routes
 
 

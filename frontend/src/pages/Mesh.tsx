@@ -515,7 +515,7 @@ const CreateMeshModal = ({ nodes, onClose, onSuccess }: CreateMeshModalProps) =>
                             value={lanSubnets[node.id] || ''}
                             onChange={(e) => setLanSubnets({ ...lanSubnets, [node.id]: e.target.value })}
                             className="flex-1 px-2 py-1 text-sm border border-gray-300 dark:border-gray-600 rounded dark:bg-gray-700 dark:text-white"
-                            placeholder="192.168.10.0/24 (optional)"
+                            placeholder="192.168.10.0/24,192.168.20.0/24 (optional, comma-separated)"
                           />
                         )}
                       </div>
