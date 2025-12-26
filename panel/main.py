@@ -218,10 +218,10 @@ async def _restore_node_tunnels():
                         local_port = client_spec.get("local_port") or bind_port
                         client_spec["local_ip"] = local_ip
                         client_spec["local_port"] = local_port
-                        else:
+                    else:
                         logger.warning(f"Tunnel {tunnel.id}: Unsupported core type {tunnel.core}, skipping")
                         skipped_count += 1
-                            continue
+                        continue
                     
                     # Apply server config to iran node (Iran = SERVER)
                     if not iran_node.node_metadata.get("api_address"):
