@@ -274,9 +274,15 @@ class WireGuardMeshManager:
         return "\n".join(lines)
     
     def get_peer_routes(self, node_config: Dict[str, Any]) -> List[str]:
-        """Get routing commands for remote LAN subnets"""
+        """Get routing commands for remote LAN subnets (peer's LAN subnets, not node's own)"""
         routes = []
-        for peer in node_config["peers"]:
+        # Iterate through peers and get each peer's LAN subnets (these are the routes we need)
+        peers = node_config.get("peers", [])
+        if not peers:
+            logger.warning(f"No peers found in node_config, cannot determine routes")
+            return routes
+        
+        for peer in peers:
             peer_lan_subnets = peer.get("lan_subnet", [])
             if isinstance(peer_lan_subnets, str):
                 # Legacy format: single subnet string
@@ -285,6 +291,11 @@ class WireGuardMeshManager:
             elif isinstance(peer_lan_subnets, list):
                 # New format: list of subnets
                 routes.extend(peer_lan_subnets)
+        
+        # Log for debugging
+        node_lan_subnets = node_config.get("lan_subnet", [])
+        logger.info(f"Node LAN subnets: {node_lan_subnets}, Peer routes: {routes}")
+        
         return routes
 
 

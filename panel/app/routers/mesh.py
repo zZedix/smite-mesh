@@ -558,6 +558,7 @@ async def apply_mesh(
         )
         
         routes = wireguard_mesh_manager.get_peer_routes(node_config)
+        logger.info(f"Node {node_id}: Generated routes from peers: {routes}")
         
         overlay_ip = await ipam_manager.get_node_ip(db, node_id)
         if not overlay_ip:
